@@ -59,6 +59,7 @@ npm run build     # tsc -b && vite build -> dist/
 npm run preview   # preview du build de prod en local
 npm run lint      # tsc --noEmit (vérif de types)
 npm run scaffold  # avec `npm run dev` lancé ailleurs : audite data/scenes.ts vs la scène active (voir src/objects/CLAUDE.md)
+npm run scaffold:i18n  # avec `npm run dev` lancé ailleurs : ajoute les clés title/description manquantes (placeholder "TODO") dans i18n/locales/*.json
 ```
 
 ## Conventions
@@ -84,22 +85,24 @@ npm run scaffold  # avec `npm run dev` lancé ailleurs : audite data/scenes.ts v
 
 ## État actuel du projet
 
+- ⚠️ **`public/models/office.glb` (125 Mo) n'est pas dans le repo Git** — au-delà de la limite de 100 Mo par fichier de GitHub, un push le refuserait (voir `.gitignore`). Tant que ce n'est pas réglé (Git LFS ou stockage externe type Vercel Blob, à choisir), la scène `office` ne peut pas charger son modèle en production même si le déploiement Vercel réussit par ailleurs. Voir "Prochaines étapes" #1.
 - Concept artistique : navigation entre plusieurs scènes 3D indépendantes (barre flottante `ui/sceneNav.ts`), chaque scène ayant potentiellement ses propres objets cliquables/contenu.
-- Une seule scène en place pour l'instant : `"office"` (`public/models/office.glb`, ~123 Mo), un intérieur scandinave lumineux — bureau, chaise, plantes, cadres muraux, panneaux LED hexagonaux + néon assortis en éclairage chaud (`objects/scenes/office.ts`).
+- Une seule scène en place pour l'instant : `"office"`, un intérieur scandinave lumineux — bureau, chaise, plantes, cadres muraux, panneaux LED hexagonaux + néon assortis en éclairage chaud (`objects/scenes/office.ts`).
 - Caméra par scène calibrée (`data/scenes.ts`) : vue de 3/4 à l'arrivée, zoom max = cadrage d'arrivée, pan borné pour ne pas sortir de la pièce (y compris via Cmd/Ctrl+glisser).
 - Éclairage global clair/neutre adapté à un style scandinave (`lighting.ts`), fond de scène assorti (`scene.ts`), accents chauds néon/LED gérés par la scène elle-même.
-- Interaction clic-pour-zoomer opérationnelle sur plusieurs objets (Custom Properties Blender `action`/`id`, voir `objects/CLAUDE.md`). Survol (point blanc flottant qui disparaît pendant le zoom), clic → tween caméra + panneau. Une fois zoomé, on entre dans un état "interaction" dont on ne sort **que par le bouton fermer du panneau** — Échap et le clic ailleurs ne dézooment plus (volontaire, `main.ts`, pour laisser la place à une future interaction sur l'objet zoomé lui-même, ex. secousse au clic). Fallback clavier, `prefers-reduced-motion` respectés.
-- Focus caméra de zoom : calculable automatiquement depuis la géométrie de l'objet (`objects/autoFocus.ts`) si `entries[id].focus` est omis dans les données — `projects`/`contact` utilisent encore un focus calibré à la main (résultat plus précis que l'auto pour l'instant).
-- `npm run scaffold` audite la scène active vs `data/scenes.ts` (ids dupliqués/manquants/orphelins) — a déjà servi à détecter un doublon (`Plant_2`/`Plant_3` partageant le même id `"cliquable"`, encore non résolu côté Blender).
+- Interaction clic-pour-zoomer opérationnelle sur une dizaine d'objets (Custom Properties Blender `action`/`id`, voir `objects/CLAUDE.md`). Survol (point blanc flottant qui disparaît pendant le zoom), clic → tween caméra + panneau. Une fois zoomé, on entre dans un état "interaction" dont on ne sort **que par le bouton fermer du panneau** — Échap et le clic ailleurs ne dézooment plus (volontaire, `main.ts`, pour laisser la place à une future interaction sur l'objet zoomé lui-même, ex. secousse au clic). Fallback clavier, `prefers-reduced-motion` respectés.
+- Focus caméra de zoom : calculable automatiquement depuis la géométrie de l'objet (`objects/autoFocus.ts`) si `entries[id].focus` est omis — l'heuristique (plus grande dimension de la bounding box = "hauteur" à cadrer, direction d'approche unique par scène) se trompe pour un objet très plat/large (ex. `tryptich`), très petit (la distance calculée peut tomber sous `camera.near`, ex. `apple_watch`), ou hors des `panBounds` de la scène (ex. `mario_bross`, corrigé en relâchant aussi les `panBounds` pendant le tween, voir `interactions/cameraRig.ts`). Plusieurs entrées de `data/scenes.ts` utilisent donc un focus calibré à la main.
+- i18n en préparation : `title`/`description` posés dans Blender sont des clés de traduction (`"title.<id>"`), résolues par `i18n/translate.ts` depuis `i18n/locales/fr.json` (langue active par défaut ; `en.json` existe déjà mais n'est pas encore branché) — tant qu'une clé n'a pas de traduction, elle s'affiche brute pour rester visible. `npm run scaffold:i18n` pré-remplit les clés manquantes avec un placeholder `"TODO"`. `public/models/flag_en.glb`/`flag_fr.glb` (petits modèles de drapeaux) sont déjà présents mais pas encore intégrés à une scène — probablement pour un futur sélecteur de langue.
+- `npm run scaffold` audite la scène active vs `data/scenes.ts` (ids dupliqués/manquants/orphelins).
 - Chargement à la demande + libération mémoire au changement de scène (`disposeObject3D()`), écran de chargement pendant le fetch.
-- Repo Git créé et poussé sur GitHub (`KMCODE-git/website`).
-- Projet Vercel créé, connecté au repo, et déployé en production.
+- Repo Git poussé sur GitHub (`KMCODE-git/website`), déploiement continu vers Vercel actif sur `main` — voir le point de vigilance `office.glb` ci-dessus.
 - Domaine `kmcode.fr` (+ `www`) connecté et DNS validé.
 
 ## Prochaines étapes possibles
 
-1. Donner un `id` unique à `Plant_2`/`Plant_3` côté Blender (actuellement en doublon sur `"cliquable"`) et décider si elles deviennent une vraie section de contenu ou restent non-cliquables.
-2. Écrire le vrai contenu de chaque section dans `data/scenes.ts` (textes, liens de projets, contact) — `npm run scaffold` génère des snippets pour les nouvelles entrées.
+1. **Régler l'hébergement de `office.glb`** (125 Mo, exclu du repo Git) : Git LFS (garde le fichier versionné avec le code, quota payant au-delà du palier gratuit GitHub) ou stockage externe type Vercel Blob (pas de limite de repo, mais charge l'URL à l'exécution plutôt qu'un chemin `public/` statique — demande d'adapter `objects/scenes/office.ts`). Décision à prendre avant que la scène fonctionne réellement en production.
+2. Écrire le vrai contenu de chaque section dans `i18n/locales/fr.json`/`en.json` (`npm run scaffold:i18n` liste les clés encore en placeholder `"TODO"`), et les liens dans `data/scenes.ts`.
 3. Ajouter d'autres scènes en suivant le pattern `objects/scenes/<id>.ts` + entrée dans `data/scenes.ts` — chaque nouvelle scène nécessite son propre calibrage caméra (voir `objects/CLAUDE.md`).
 4. `lighting.ts` reste global (pas encore par scène) — à surveiller si une future scène demande une ambiance très différente (actuellement calé clair/scandinave).
 5. Interactions "objet qui bouge" (ex. secouer une plante au clic) : l'état "interaction" post-zoom existe déjà (sortie uniquement via le bouton fermer, voir ci-dessus), reste à ajouter la Custom Property Blender discriminante (ex. `interaction: "shake"`) et l'animation elle-même (probablement `interactions/cameraRig.ts` ou un module frère), déclenchée après la fin du tween de zoom.
+6. Intégrer `flag_en.glb`/`flag_fr.glb` à un vrai sélecteur de langue une fois `en.json` rempli.
