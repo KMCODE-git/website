@@ -1,7 +1,7 @@
-import type { PortfolioEntry } from "../data/scenes";
+import type { FocusEntry } from "../data/scenes";
 
 export interface AccessibleNav {
-  setEntries: (entries: Record<string, PortfolioEntry>) => void;
+  setEntries: (entries: Record<string, FocusEntry>) => void;
 }
 
 export function createAccessibleNav(onSelect: (id: string) => void): AccessibleNav {
@@ -17,9 +17,10 @@ export function createAccessibleNav(onSelect: (id: string) => void): AccessibleN
         const button = document.createElement("button");
         button.type = "button";
         button.className = "sr-nav__button";
-        // Contrairement au panneau visuel (ui/panel.ts), un bouton sans libellé serait
-        // inutilisable au clavier/lecteur d'écran — repli sur l'id uniquement ici.
-        button.textContent = entry.title || entry.id;
+        // Plus de titre Blender à afficher (panneau de contenu retiré) : l'id est le seul
+        // libellé disponible pour ce fallback clavier — un bouton sans texte serait
+        // inutilisable au clavier/lecteur d'écran.
+        button.textContent = entry.id;
         button.addEventListener("click", () => onSelect(entry.id));
         nav.appendChild(button);
       }

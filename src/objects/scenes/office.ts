@@ -19,11 +19,12 @@ function applyWarmEmissive(mesh: THREE.Mesh, intensity: number): void {
   });
 }
 
-function addLightAt(object: THREE.Object3D, group: THREE.Group, intensity: number, distance: number): void {
+function addLightAt(object: THREE.Object3D, group: THREE.Group, intensity: number, distance: number): THREE.PointLight {
   const center = new THREE.Box3().setFromObject(object).getCenter(new THREE.Vector3());
   const light = new THREE.PointLight(WARM_COLOR, intensity, distance, 2);
   light.position.copy(center);
   group.add(light);
+  return light;
 }
 
 function litWarm(model: THREE.Object3D, name: string, group: THREE.Group, emissiveIntensity: number, lightIntensity: number, lightDistance: number): void {
@@ -33,7 +34,10 @@ function litWarm(model: THREE.Object3D, name: string, group: THREE.Group, emissi
     return;
   }
   applyWarmEmissive(object, emissiveIntensity);
-  addLightAt(object, group, lightIntensity, lightDistance);
+  // Référencée sur le mesh lui-même : "swap_light_color" (Led_pannels, objectAnimations.ts)
+  // retrouve la lumière associée à chaque panneau via userData plutôt que de la recevoir en
+  // paramètre — évite de faire remonter la liste des PointLight jusqu'à l'appelant.
+  object.userData.emissiveLight = addLightAt(object, group, lightIntensity, lightDistance);
 }
 
 export async function buildOfficeScene(): Promise<SceneAssets> {
@@ -49,7 +53,7 @@ export async function buildOfficeScene(): Promise<SceneAssets> {
 
   litWarm(model, "NeonStrip", group, 1.3, 1, 3);
   for (let i = 1; i <= LED_PANEL_COUNT; i++) {
-    litWarm(model, `Led_pannel${i}`, group, 0.85, 0.6, 1);
+    litWarm(model, `Led_pannel${i}`, group, 0.67, 0.1, 0);
   }
 
   return { group, interactiveObjects: collectInteractiveObjects(model) };

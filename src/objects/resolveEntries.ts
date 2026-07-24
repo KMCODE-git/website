@@ -1,54 +1,45 @@
 import * as THREE from "three";
 import { computeAutoFocus } from "./autoFocus";
-import { translate } from "../i18n/translate";
-import type { PortfolioEntry, PortfolioEntryOverride } from "../data/scenes";
+import type { FocusEntry, FocusOverride } from "../data/scenes";
 
 export interface ResolvedEntries {
-  entries: Record<string, PortfolioEntry>;
+  entries: Record<string, FocusEntry>;
   interactiveObjects: THREE.Object3D[];
 }
 
-// Fusionne, pour chaque objet portant un userData.id : title/description viennent toujours
-// de Blender (Custom Properties, traduites via i18n/translate.ts — voir son commentaire),
-// data/scenes.ts ne sert plus qu'à surcharger le focus ou ajouter des liens. Un objet
-// fonctionne donc sans aucune entrée dans data/scenes.ts. Pas de titre Blender → title vide,
-// pas de repli sur l'id (voir ui/panel.ts et ui/accessibleNav.ts pour ce que ça implique).
-// Un id posé sur plusieurs objets est ambigu — on l'exclut avec un avertissement plutôt
-// que de deviner lequel garder (voir "npm run scaffold" pour les repérer en amont).
+// Pour chaque objet portant userData.animation===true : calcule son focus caméra (auto via
+// objects/autoFocus.ts, ou surchargé dans data/scenes.ts si le résultat par défaut ne convient
+// pas). `object.name` (déjà unique par objet dans Blender) sert de clé — aucune Custom
+// Property "id" à poser. Un nom posé sur plusieurs objets serait ambigu (ne devrait pas
+// arriver, Blender garantit des noms uniques) : on l'exclut alors avec un avertissement plutôt
+// que de deviner lequel garder.
 export function resolveEntries(
   objects: THREE.Object3D[],
-  overrides: Record<string, PortfolioEntryOverride> | undefined,
+  overrides: Record<string, FocusOverride> | undefined,
   cameraFovDegrees: number,
   defaultCameraPosition: THREE.Vector3
 ): ResolvedEntries {
-  const byId = new Map<string, THREE.Object3D[]>();
+  const byName = new Map<string, THREE.Object3D[]>();
   for (const object of objects) {
-    const id = object.userData.id as string | undefined;
-    if (!id) continue;
-    if (!byId.has(id)) byId.set(id, []);
-    byId.get(id)!.push(object);
+    if (!byName.has(object.name)) byName.set(object.name, []);
+    byName.get(object.name)!.push(object);
   }
 
-  const entries: Record<string, PortfolioEntry> = {};
+  const entries: Record<string, FocusEntry> = {};
   const interactiveObjects: THREE.Object3D[] = [];
 
-  for (const [id, group] of byId) {
+  for (const [name, group] of byName) {
     if (group.length > 1) {
       console.warn(
-        `[data/scenes] "${id}" est posé sur ${group.length} objets différents (${group
-          .map((object) => object.name)
-          .join(", ")}) — ignoré. Chaque objet doit avoir un id unique (voir objects/CLAUDE.md, "npm run scaffold" pour les repérer).`
+        `[data/scenes] "${name}" est posé sur ${group.length} objets différents — ignoré. Chaque objet interactif doit avoir un nom unique dans Blender (voir objects/CLAUDE.md, "npm run scaffold" pour les repérer).`
       );
       continue;
     }
 
     const object = group[0];
-    const override = overrides?.[id];
-    entries[id] = {
-      id,
-      title: translate(object.userData.title as string | undefined) ?? "",
-      description: translate(object.userData.description as string | undefined) ?? "",
-      links: override?.links ?? [],
+    const override = overrides?.[name];
+    entries[name] = {
+      id: name,
       focus: override?.focus ?? computeAutoFocus(object, cameraFovDegrees, defaultCameraPosition),
     };
     interactiveObjects.push(object);

@@ -8,8 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint": "tsc --noEmit",
-    "scaffold": "node scripts/scaffold-scenes.mjs",
-    "scaffold:i18n": "node scripts/scaffold-i18n.mjs"
+    "scaffold": "node scripts/scaffold-scenes.mjs"
   },
   "dependencies": {
     "three": "^0.169.0"

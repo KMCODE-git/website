@@ -1,13 +1,13 @@
 # src/objects/
 
-Construction du contenu 3D. `objects/scenes/` contient un fichier par scène (`office.ts`...), chacun exportant une fonction `build<Nom>Scene(): Promise<SceneAssets>` (`{ group, interactiveObjects }`), enregistrée dans `objects/scenes/index.ts` (`SCENE_BUILDERS`). `loader.ts` contient les utilitaires génériques partagés par toutes les scènes.
+Construction du contenu 3D. `objects/scenes/office.ts` exporte `buildOfficeScene(): Promise<SceneAssets>` (`{ group, interactiveObjects }`), appelée une fois par `main.ts` (`init()`) — site à page unique, voir `CLAUDE.md` racine "Page unique". `loader.ts` contient les utilitaires génériques.
 
-## Pipeline d'import `.glb` (pattern à répliquer pour chaque nouvelle scène)
+## Pipeline d'import `.glb`
 
 1. Modéliser dans Blender, exporter en `.glb` (glTF Binary, "+Y Up" coché, **"Custom Properties" coché** — voir plus bas) vers `public/models/<nom>.glb`.
 2. Charger avec `loadModel(path)` (`loader.ts`) — ça active `castShadow`/`receiveShadow` sur tous les meshes (GLTFLoader ne le fait pas par défaut).
 3. **Toujours vérifier l'orientation et la position après un premier import** — voir la checklist ci-dessous.
-4. Toute fonction `build*Scene()` est `async` (chargement réseau) — `main.ts` gère déjà l'`await` dans `loadScene()`.
+4. `buildOfficeScene()` est `async` (chargement réseau) — `main.ts` gère déjà l'`await` dans `init()`.
 
 ### Checklist si un modèle apparaît mal orienté ou mal placé
 
@@ -28,51 +28,54 @@ Construction du contenu 3D. `objects/scenes/` contient un fichier par scène (`o
 
 ### Calibrage des dimensions
 
-Aucun calcul automatique de mise à l'échelle — la caméra (`defaultCamera`/`distance`/`panBounds`/`polarAngle`/`azimuthAngle`, tous définis par scène dans `data/scenes.ts`) est calée à l'œil par itération (`npm run dev`, ajuster, recharger) une fois le modèle vu en vrai.
+Aucun calcul automatique de mise à l'échelle — la caméra (`defaultCamera` dans `data/scenes.ts`, seule pose caméra depuis que la navigation libre a été retirée, voir `interactions/CLAUDE.md`) est calée à l'œil par itération (`npm run dev`, ajuster, recharger) une fois le modèle vu en vrai.
 
-## Rendre un objet cliquable : tout part de Blender, `data/scenes.ts` ne sert qu'à surcharger
+## Rendre un objet interactif : tout part de Blender, `data/scenes.ts` ne sert qu'à surcharger le focus
 
-Un objet devient cliquable en lui posant des **Custom Properties** dans Blender (Object Properties → Custom Properties → "+") — **aucune entrée dans `data/scenes.ts` n'est nécessaire pour que ça fonctionne** :
+Un objet devient interactif en lui posant des **Custom Properties** dans Blender (Object Properties → Custom Properties → "+") — **aucune entrée dans `data/scenes.ts` n'est nécessaire pour que ça fonctionne**, et pas besoin de poser d'`id` non plus : `object.name` (déjà unique par objet dans Blender, sans rien configurer) sert d'identifiant partout où il en faut un.
 
-- **`action`** (obligatoire, **Boolean** — attention, le "+" de Blender crée un Float par défaut, il faut changer le Type manuellement) — le vrai déclencheur du clic. Doit valoir `true`. Un objet peut porter un `id` (pour d'autres besoins) sans être cliquable si `action` est absent ou `false` — voir `collectInteractiveObjects()` (`loader.ts`) et `findInteractiveAncestor()` (`interactions/raycaster.ts`), qui exigent tous les deux `action === true && id`.
-- **`id`** (obligatoire, String) — **unique par objet**. Poser le même `id` (ex. `"cliquable"`) sur deux objets différents les rend ambigus : `objects/resolveEntries.ts` les détecte et les **exclut tous les deux** (avec un `console.warn`) plutôt que de deviner lequel garder. Un objet = un id. Si plusieurs objets partagent le même *type* de contenu, donne-leur des ids distincts (`plant-1`, `plant-2`...).
-- **`title`** (optionnel, String) — clé de traduction affichée comme titre du panneau (voir i18n plus bas). Absent → **le panneau n'affiche aucun titre** (`ui/panel.ts` masque le `<h2>`) ; seul `ui/accessibleNav.ts` retombe sur l'`id` brut pour le libellé de son bouton, par nécessité d'accessibilité (un bouton sans texte est inutilisable au clavier/lecteur d'écran).
-- **`description`** (optionnel, String) — clé de traduction affichée comme texte du panneau. Absent → chaîne vide.
+- **`animation`** (obligatoire, **Boolean** — attention, le "+" de Blender crée un Float par défaut, il faut changer le Type manuellement) — **la seule condition** pour qu'un objet devienne interactif : survol → curseur + léger mouvement vers le haut (systématique, voir `interactions/objectAnimations.ts`), clic → activé. Voir `collectInteractiveObjects()` (`loader.ts`) et `findInteractiveAncestor()` (`interactions/raycaster.ts`), qui n'exigent que `animation === true`.
+- **`animationTrigger`** (String, `"hover"` ou `"click"`) — décide **quand** `animationType` se déclenche (voir `interactions/CLAUDE.md`). Sans effet sur le survol-lift ci-dessus, toujours actif. **`animationType="zoom"` ignore cette propriété et reste toujours déclenché au clic** (voir `interactions/CLAUDE.md`, "Pourquoi `zoom` échappe à `animationTrigger`").
+- **`animationType`** (String) — décide **quoi** se joue. Valeurs reconnues par le code :
+  - `"zoom"` — tween caméra vers un focus (voir plus bas).
+  - `"swing"` — oscillation autour de l'axe vertical, amplitude en ease-out (`Math.pow(1-u, 2)`, forte dès le départ puis s'atténue), pivot à la **base** de l'objet (pas son origine, voir `pivotOffset`/`pivotedPositionOffset()` dans `objectAnimations.ts`) — sans ça la rotation se fait autour du centre géométrique et la base "flotte"/bouge avec le reste.
+  - `"swing_back"` — bascule vers l'arrière puis retour, un seul mouvement (pas d'oscillation répétée contrairement à `swing`), pivot à la base également.
+  - `"spin"` — tour complet (360°) autour de l'axe vertical, vitesse **linéaire** (pas d'easing), pivot à la base.
+  - `"bounce"` — rebonds décroissants (façon balle qui retombe), amplitude en ease-out, déplacement vertical uniquement (pas de rotation).
+  - `"move"` — translation dans une petite zone puis retour. **Pas de vraie détection de collision** — le rayon est calculé au déclenchement, proportionnel à l'empreinte au sol de l'objet lui-même (`MOVE_RADIUS_FACTOR_MIN`/`MAX` dans `objectAnimations.ts`), donc "sans entrer en contact avec d'autres objets" n'est pas garanti dans un environnement encombré, juste probable pour un objet isolé.
+  - `"swap"` — échange la position de deux **enfants directs** de l'objet interactif, tirés au hasard à chaque déclenchement (jamais systématiquement la même paire) — contrairement aux autres one-shot, ne revient jamais au repos : le but est de rebattre durablement l'ordre (ex. `Triptych` avec ses enfants `Triptych_1/2/3`). Écrit sur `position.z` (pas `.y`) : l'export glTF convertit le Z-up de Blender en Y-up, ce qui remappe l'axe **Y de Blender** (l'axe le long duquel des enfants sont typiquement espacés côté Blender) sur **Z côté Three.js** — vérifié à l'implémentation (les enfants du Triptych ont un Y identique en Three.js, seul Z varie). Se pose sur l'objet **parent** (`animation=true` + `animationType="swap"`), pas sur les enfants eux-mêmes.
+  - `"swap_light_color"` (ex-`"swap_color"`) — fait avancer d'un cran une palette cyclique de couleurs (`LIGHT_COLOR_PALETTE` dans `objectAnimations.ts` : blanc chaud (défaut) → rouge → vert → violet → rose → cyan → retour au blanc chaud) appliquée à **tous les descendants** de l'objet interactif qui portent une `PointLight` associée (`mesh.userData.emissiveLight`, posé par `litWarm()` dans `objects/scenes/office.ts`) : met à jour à la fois le `material.emissive` du mesh et la couleur de sa lumière, en fondu (~600ms), pour rester cohérent visuellement (sans ça la surface et la lumière qu'elle projette se désynchroniseraient). Utilisé par `Led_pannels` (13 panneaux enfants `Led_pannel1..13`) — un clic change la couleur d'ambiance de tout le groupe en une fois, pas panneau par panneau.
+    - **`emissiveIntensity` calibrée par teinte, pas une valeur unique pour toute la palette** : à intensité identique, une teinte comme le vert/cyan (poids élevé dans la formule de luminance Rec.709 utilisée aussi par le seuil de bloom, voir `postprocessing.ts`) paraît nettement plus lumineuse qu'un bleu/violet (poids très faible) — sans compensation, cycler dans la palette donnait l'impression que certaines couleurs "n'allument pas" autant que d'autres. Chaque teinte a son `intensity` calculée (`calibratedLightColor()`) pour retomber sur la même luminance perçue que le blanc chaud par défaut (`TARGET_LUMINANCE`), donc `emissiveIntensity` est lui aussi interpolé pendant le fondu, pas seulement la couleur.
+    - Contrairement aux autres one-shot de mouvement pur, **pas désactivé sous `prefers-reduced-motion`** : la couleur (et l'intensité) change quand même, juste instantanément (sans fondu) plutôt que disparaître — un clic qui ne produit visiblement rien serait plus déroutant qu'utile ici, alors que pour `swing`/`bounce`/etc. l'absence de mouvement est justement ce que l'utilisateur demande.
+  - `"screen"` — cas particulier, pas un `animationType` de plus dans la liste ci-dessus mais un **effet indépendant couplé directement au survol** (comme le survol-lift, pas une timeline fixe). Se pose **uniquement sur le sous-objet** à illuminer (ex. `Mac_screen`), jamais sur l'objet interactif racine — celui-ci n'a besoin que d'`animation=true` + `animationTrigger="hover"` (**pas `"click"`** : un clic n'a pas de moment naturel "fin de survol" pour éteindre l'écran, donc "screen" ignore ce cas), son propre `animationType` peut rester vide. Dès que l'objet racine devient survolé, le code cherche dans toute sa hiérarchie les descendants portant `animationType="screen"` et anime leur matériau en continu (`MeshStandardMaterial` attendu, sinon avertissement console) tant que le survol dure ; ça s'éteint dès que le survol s'arrête. Pas de Custom Property supplémentaire à poser sur le parent pour "désigner" quel enfant illuminer — le sous-objet se désigne lui-même.
+    - **Piège rencontré** : deux sous-objets `screen` différents peuvent partager le **même matériau** côté Blender (mesh dupliqué sans "rendre le matériau unique" — repérable par UUID de matériau identique). Sans précaution, animer l'un allume aussi l'autre puisque c'est littéralement la même ressource. `objectAnimations.ts` clone le matériau au premier survol de chaque sous-objet (dans `getScreenGlow()`) pour garantir l'indépendance, sans dépendre d'un nouvel export Blender.
+  - Un objet `animation=true` avec un `animationType` absent ou non reconnu a son survol actif (curseur + hover-lift) mais rien ne se déclenche en plus — voir `main.ts` (`selectEntry()`/`setHovered()`), en attente de futures valeurs.
 
-**Condition indispensable à l'export** : cocher **"Custom Properties"** dans les réglages d'export glTF (sinon ces propriétés ne sont jamais écrites dans le fichier). GLTFLoader copie automatiquement les `extras` d'un nœud glTF dans `object.userData` — donc `userData.action`/`id`/`title`/`description` sont déjà là au chargement, sans rien coder.
+**Condition indispensable à l'export** : cocher **"Custom Properties"** dans les réglages d'export glTF (sinon ces propriétés ne sont jamais écrites dans le fichier). GLTFLoader copie automatiquement les `extras` d'un nœud glTF dans `object.userData` — donc `userData.animation`/`animationType` sont déjà là au chargement, sans rien coder. **Vérifier après export** que ces propriétés ont bien survécu si le fichier passe par un pipeline de compression/optimisation (Draco, ré-export) — un outil de compression mal configuré peut discrètement supprimer les `extras` glTF (déjà rencontré, voir `git log` sur ce fichier).
 
-### i18n (placeholder actuel, vraie traduction future)
-
-`title`/`description` posés dans Blender ne sont pas du texte final mais des **clés de traduction** (convention : `"title.<id>"`, `"description.<id>"`, ex. `"title.projects"`). Les traductions vivent dans `src/i18n/locales/fr.json`/`en.json` (objet plat `{ "title.projects": "Projets" }`) ; `src/i18n/translate.ts` (`translate(key)`) importe **`fr.json` par défaut** (seule langue branchée pour l'instant — `en.json` existe mais n'est pas encore importé, en attendant un vrai sélecteur de langue) et, tant qu'une clé n'y a pas de traduction, **affiche la clé brute telle quelle** — volontaire, pour que ce qui reste à traduire soit visible plutôt que masqué derrière du texte vide. `objects/resolveEntries.ts` appelle `translate()` sur les deux champs avant de construire chaque `PortfolioEntry`.
-
-Côté code, `collectInteractiveObjects(model)` (`loader.ts`) récupère tout objet portant `userData.action === true && userData.id`, puis `objects/resolveEntries.ts` fusionne pour chacun : **Blender (traduit) < surcharge `data/scenes.ts` < calcul automatique** (focus uniquement) :
+Côté code, `collectInteractiveObjects(model)` (`loader.ts`) récupère tout objet portant `userData.animation === true`, puis `objects/resolveEntries.ts` résout pour chacun (identifié par son `object.name`) son focus caméra : **calcul automatique < surcharge `data/scenes.ts`** :
 ```ts
-const { entries, interactiveObjects } = resolveEntries(allInteractiveObjects, meta.entries, camera.fov, defaultCameraPosition);
+const { entries, interactiveObjects } = resolveEntries(allInteractiveObjects, sceneConfig.entries, camera.fov, defaultCameraPosition);
 ```
-`interactions/raycaster.ts` remonte la hiérarchie de parents jusqu'à trouver `userData.action === true && userData.id` — donc poser les Custom Properties sur le nœud racine de l'objet (pas forcément sur chaque sous-mesh) suffit à rendre tout le sous-arbre cliquable.
+`interactions/raycaster.ts` remonte la hiérarchie de parents jusqu'à trouver `userData.animation === true` — donc poser la Custom Property sur le nœud racine de l'objet (pas forcément sur chaque sous-mesh) suffit à rendre tout le sous-arbre interactif.
 
-`data/scenes.ts` (`entries?: Record<string, PortfolioEntryOverride>`, tout optionnel) ne fournit **jamais** de `title`/`description` (exclusivement Blender) — il ne sert plus qu'à :
-- ajouter des **`links`** (liste de liens) — pas d'équivalent Blender pour une liste, c'est le seul champ qu'on renseigne systématiquement ici,
-- surcharger le `focus` auto-calculé si le résultat par défaut ne convient pas (voir plus bas).
+`data/scenes.ts` (`entries?: Record<string, FocusOverride>`, tout optionnel, clés = `object.name`) ne sert donc qu'à surcharger le `focus` auto-calculé si le résultat par défaut ne convient pas (voir plus bas) — aucun autre contenu (pas de titre/description/liens depuis le retrait du panneau, voir `CLAUDE.md` racine "Interaction et caméra").
 
-Ancienne approche (avant cette convention) : appeler `model.getObjectByName("NomExact")` et poser `userData.id`/`userData.interactive` à la main en code, pour chaque objet un par un — encore utilisé pour des effets qui ne sont *pas* des sections cliquables (néon, panneaux LED, voir plus bas), mais plus pour l'interactivité.
+Ancienne approche (avant cette convention) : appeler `model.getObjectByName("NomExact")` en code pour chaque objet un par un — encore utilisé pour des effets qui ne sont *pas* des objets interactifs (néon, panneaux LED, voir plus bas), mais plus pour l'interactivité elle-même.
 
 ### Focus caméra automatique
 
-`focus` est **optionnel** dans une surcharge. S'il est omis, `computeAutoFocus()` (`objects/autoFocus.ts`) le calcule au chargement à partir de la bounding box réelle de l'objet et du FOV de la caméra, pour un cadrage qui remplit ~75% de l'écran — plus besoin de calibrer une position/cible à la main pour chaque nouvel objet. L'approche est heuristique (direction déduite de la position de la caméra par défaut de la scène) : correcte pour un objet posé sur un bureau vu depuis la vue par défaut, moins fiable pour une orientation atypique — dans ce cas, préciser `focus` à la main comme pour `projects`/`contact` (calibrés par capture d'écran, voir leurs commentaires dans `data/scenes.ts`).
+`focus` est **optionnel** dans une surcharge. S'il est omis, `computeAutoFocus()` (`objects/autoFocus.ts`) le calcule au chargement à partir de la bounding box réelle de l'objet et du FOV de la caméra, pour un cadrage qui remplit ~75% de l'écran — plus besoin de calibrer une position/cible à la main pour chaque nouvel objet. L'approche est heuristique (plus grande dimension de la bounding box traitée comme "hauteur", direction d'approche déduite de la position de la caméra par défaut de la scène) : correcte pour un objet ~cubique posé près du centre de la scène, moins fiable pour un objet très plat/large, très petit (la distance calculée peut tomber sous `camera.near`), ou situé loin de la zone habituelle — dans ce cas, préciser `focus` à la main comme dans les entrées déjà présentes dans `data/scenes.ts` (calibrées par capture d'écran).
 
 ### Script de scaffold (`npm run scaffold`)
 
-`scripts/scaffold-scenes.mjs` inspecte la scène active du serveur de dev (lancer `npm run dev` dans un autre terminal d'abord) via un hook dev-only (`window.__kmcode_scaffold__`, défini dans `main.ts`) et compare avec `data/scenes.ts` :
-- signale les **ids dupliqués** (posés sur plusieurs objets — ceux-là sont réellement cassés, à corriger),
-- indique pour chaque objet si son titre vient de **Blender**, ou s'il **manque** (le panneau n'affichera alors aucun titre — la correction se fait dans Blender, pas dans `data/scenes.ts` qui ne peut plus fournir de titre),
-- signale les **surcharges orphelines** (déclarées dans `data/scenes.ts` mais sans objet correspondant dans la scène actuelle).
+`scripts/scaffold-scenes.mjs` inspecte le modèle chargé sur le serveur de dev (lancer `npm run dev` dans un autre terminal d'abord) via un hook dev-only (`window.__kmcode_scaffold__`, défini dans `main.ts`) et compare avec `data/scenes.ts` :
+- signale les **noms dupliqués** (deux objets interactifs portant le même `object.name` — ceux-là sont réellement cassés, à corriger dans Blender),
+- indique pour chaque objet si son `animationType` est reconnu par le code, ou **absent/non géré** (rien ne se déclenche pour cet objet),
+- pour `animationType="zoom"` : indique si son focus vient d'une **surcharge** `data/scenes.ts` ou du **calcul automatique** ; pour les autres types reconnus : indique si son `animationTrigger` est valide (`"hover"`/`"click"`) ou **non reconnu** (l'effet ne se déclenchera jamais),
+- signale les **surcharges orphelines** (déclarées dans `data/scenes.ts` mais sans objet correspondant dans le modèle actuel).
 
-Ne modifie jamais `data/scenes.ts` directement — imprime juste ce qu'il faut coller, pour garder un humain dans la boucle sur le contenu.
-
-### Script de scaffold i18n (`npm run scaffold:i18n`)
-
-`scripts/scaffold-i18n.mjs` — même mécanisme (`window.__kmcode_scaffold__`, `npm run dev` requis dans un autre terminal), mais pour les traductions : liste toutes les clés `title`/`description` posées dans Blender pour la scène active, puis les ajoute (placeholder `"TODO"`) dans `i18n/locales/fr.json` **et** `en.json` si elles n'y sont pas déjà. Idempotent et non-destructif — une clé déjà traduite (valeur ≠ manquante) n'est jamais réécrite, seules les clés absentes sont ajoutées. À relancer après chaque nouvel objet cliquable ajouté dans Blender pour ne pas oublier de clé de traduction.
+Ne modifie jamais `data/scenes.ts` directement — imprime juste ce qu'il faut vérifier/coller, pour garder un humain dans la boucle sur le contenu.
 
 ## Éclairage émissif / effets de lumière sur un objet importé
 
