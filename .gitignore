@@ -5,8 +5,3 @@ dist
 *.tsbuildinfo
 .claude/settings.local.json
 helpers/
-
-# 125 Mo — dépasse la limite de 100 Mo par fichier de GitHub, un push le refuserait.
-# À héberger séparément (Git LFS ou Vercel Blob) avant que la scène "office" ne fonctionne
-# en production — voir CLAUDE.md.
-public/models/office.glb
