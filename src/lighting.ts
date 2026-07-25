@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { isLowPowerDevice } from "./deviceCapabilities";
 
 export interface Lighting {
   group: THREE.Group;
@@ -16,7 +17,10 @@ export function createLighting(): Lighting {
   // direction de la caméra par défaut (defaultCamera, data/scenes.ts, ~(2.5, 2.35, 2.5)) pour un
   // éclairage plus "de face" et moins uniquement plongeant.
   key.position.set(2.5, 3.5, 4.5);
-  key.castShadow = true;
+  // Pas d'ombre portée sur mobile/tactile (voir deviceCapabilities.ts) : la shadow map (2048x2048)
+  // est un framebuffer GPU coûteux en mémoire, un facteur aggravant du crash mémoire rencontré
+  // sur mobile (voir CLAUDE.md racine) en plus de renderer.shadowMap.enabled=false (renderer.ts).
+  key.castShadow = !isLowPowerDevice;
   key.shadow.mapSize.set(2048, 2048);
   key.shadow.camera.near = 1;
   key.shadow.camera.far = 15;

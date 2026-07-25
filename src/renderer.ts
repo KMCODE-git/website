@@ -1,10 +1,14 @@
 import * as THREE from "three";
+import { isLowPowerDevice } from "./deviceCapabilities";
 
 export function createRenderer(canvas: HTMLCanvasElement): THREE.WebGLRenderer {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.shadowMap.enabled = true;
+  // Plafond réduit sur mobile/tactile (voir deviceCapabilities.ts) : le pixel ratio multiplie la
+  // mémoire de TOUS les render targets (scène, shadow map, passes de bloom) — un devicePixelRatio
+  // de 3 (courant sur téléphone) capé à 2 reste déjà 4x plus de pixels à traiter qu'à 1x.
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, isLowPowerDevice ? 1 : 2));
+  renderer.shadowMap.enabled = !isLowPowerDevice;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   // À `true` par défaut dans Three.js : fait appeler getShaderInfoLog()/getProgramInfoLog()
   // (synchronisation GPU⇄CPU coûteuse) à chaque compilation de programme shader — utile en

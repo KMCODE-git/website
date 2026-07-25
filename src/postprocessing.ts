@@ -3,6 +3,7 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { isLowPowerDevice } from "./deviceCapabilities";
 
 export function createPostprocessing(
   renderer: THREE.WebGLRenderer,
@@ -12,13 +13,18 @@ export function createPostprocessing(
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
 
-  const bloom = new UnrealBloomPass(
-    new THREE.Vector2(window.innerWidth, window.innerHeight),
-    0.55, // strength
-    0.4, // radius
-    0.95 // threshold: only bright emissive areas bloom (relevé pour un fond clair, sinon le décor entier brille)
-  );
-  composer.addPass(bloom);
+  // Bloom omis sur mobile/tactile (voir deviceCapabilities.ts) : UnrealBloomPass alloue plusieurs
+  // render targets à différentes résolutions (flou multi-passes) — un facteur aggravant du crash
+  // mémoire rencontré sur mobile (voir CLAUDE.md racine), en plus des ombres/pixel ratio.
+  if (!isLowPowerDevice) {
+    const bloom = new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      0.55, // strength
+      0.4, // radius
+      0.95 // threshold: only bright emissive areas bloom (relevé pour un fond clair, sinon le décor entier brille)
+    );
+    composer.addPass(bloom);
+  }
   composer.addPass(new OutputPass());
 
   return composer;
