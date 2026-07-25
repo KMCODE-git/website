@@ -147,8 +147,6 @@ interface LightColorSwap {
   light: THREE.PointLight | null;
   fromColor: THREE.Color;
   toColor: THREE.Color;
-  fromIntensity: number;
-  toIntensity: number;
   startTime: number;
 }
 
@@ -199,17 +197,15 @@ export function createObjectAnimations(): ObjectAnimations {
 
   // État actuel (couleur + intensité) d'un matériau déjà en transition (sinon son état émissif au
   // repos) — même rôle que currentSwapZ : point de départ propre si on re-clique avant la fin du
-  // fondu précédent, plutôt que de sauter depuis l'ancienne cible.
+  // fondu précédent, plutôt que de sauter depuis l'ancienne cible. Intensité toujours dérivée de
+  // la couleur (voir updateLightColorSwaps()), jamais stockée/interpolée elle-même.
   const tmpColor = new THREE.Color();
   function currentLightColorState(material: THREE.MeshStandardMaterial): LightColorOption {
     const existing = lightColorSwaps.get(material);
     if (!existing) return { color: material.emissive.clone(), intensity: material.emissiveIntensity };
     const u = Math.min((performance.now() - existing.startTime) / LIGHT_COLOR_SWAP_DURATION_MS, 1);
-    const eased = easeInOutCubic(u);
-    return {
-      color: existing.fromColor.clone().lerp(existing.toColor, eased),
-      intensity: existing.fromIntensity + (existing.toIntensity - existing.fromIntensity) * eased,
-    };
+    const color = existing.fromColor.clone().lerp(existing.toColor, easeInOutCubic(u));
+    return { color, intensity: TARGET_LUMINANCE / relativeLuminance(color) };
   }
 
   function updateLightColorSwaps() {
@@ -219,7 +215,15 @@ export function createObjectAnimations(): ObjectAnimations {
       const eased = easeInOutCubic(u);
       tmpColor.copy(swap.fromColor).lerp(swap.toColor, eased);
       material.emissive.copy(tmpColor);
-      material.emissiveIntensity = swap.fromIntensity + (swap.toIntensity - swap.fromIntensity) * eased;
+      // Intensité recalculée à partir de la couleur INTERPOLÉE de cette frame, pas interpolée
+      // linéairement en parallèle entre une intensité de départ et d'arrivée : chaque teinte de
+      // la palette n'est calibrée (intensity × luminance-couleur = TARGET_LUMINANCE, voir
+      // calibratedLightColor()) qu'à ses propres extrémités. Interpoler intensité et couleur
+      // séparément fait diverger leur produit à mi-fondu (l'un monte pendant que l'autre
+      // descend, sans jamais repasser exactement par la cible) — visible comme un halo qui
+      // s'allume fort avant de retomber à l'intensité normale. Recalculer ainsi maintient la
+      // luminance perçue ~constante sur tout le fondu, pas seulement aux deux bouts.
+      material.emissiveIntensity = TARGET_LUMINANCE / relativeLuminance(tmpColor);
       if (swap.light) swap.light.color.copy(tmpColor);
       if (u >= 1) lightColorSwaps.delete(material);
     }
@@ -322,20 +326,28 @@ export function createObjectAnimations(): ObjectAnimations {
       }
     },
     trigger(object, animationType) {
-      if (animationType === "swing" || animationType === "swing_back" || animationType === "spin") {
+      const isOneShotType =
+        animationType === "swing" || animationType === "swing_back" || animationType === "spin" || animationType === "bounce" || animationType === "move";
+      if (isOneShotType) {
         if (reducedMotion) return;
+        // Bloque un nouveau déclenchement tant que le précédent n'est pas terminé — un
+        // re-trigger réinitialiserait startTime et ferait sauter l'objet instantanément à son
+        // angle/position de repos (u=0) avant de repartir, au lieu de continuer proprement (ex.
+        // Chair/"spin" : cliquer pendant la rotation la faisait sauter en arrière puis repartir).
+        if (getState(object).oneShot) return;
+      }
+
+      if (animationType === "swing" || animationType === "swing_back" || animationType === "spin") {
         const state = getState(object);
         state.oneShot = { kind: animationType, startTime: performance.now() };
         active.add(object);
       } else if (animationType === "bounce") {
-        if (reducedMotion) return;
         const box = new THREE.Box3().setFromObject(object);
         const size = box.getSize(new THREE.Vector3());
         const state = getState(object);
         state.oneShot = { kind: "bounce", startTime: performance.now(), bounceHeight: size.y * BOUNCE_HEIGHT_FACTOR };
         active.add(object);
       } else if (animationType === "move") {
-        if (reducedMotion) return;
         const box = new THREE.Box3().setFromObject(object);
         const size = box.getSize(new THREE.Vector3());
         const footprint = Math.max(size.x, size.z);
@@ -390,8 +402,6 @@ export function createObjectAnimations(): ObjectAnimations {
             light,
             fromColor: from.color,
             toColor: target.color.clone(),
-            fromIntensity: from.intensity,
-            toIntensity: target.intensity,
             startTime,
           });
         });

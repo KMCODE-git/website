@@ -23,7 +23,7 @@ export async function loadModel(path: string): Promise<THREE.Group> {
   return gltf.scene;
 }
 
-// Un objet devient interactif avec une seule Custom Property Blender : "animation" (Boolean,
+// Un objet devient interactif avec une Custom Property Blender : "animation" (Boolean,
 // attention le "+" de Blender crée un Float par défaut, il faut changer le Type manuellement)
 // — sa seule présence à `true` suffit (survol = léger mouvement vers le haut, voir
 // interactions/objectAnimations.ts ; clic = activé). Pas de "id" séparé à poser : `object.name`
@@ -32,10 +32,14 @@ export async function loadModel(path: string): Promise<THREE.Group> {
 // Custom Property, "animationType" (String, ex. "zoom"), lue directement sur l'objet dans
 // main.ts. Condition à l'export glTF : "Custom Properties" coché — GLTFLoader copie alors ces
 // extras dans userData automatiquement, sans rien coder par objet.
+//
+// "link" (String, ex. "contact") rend aussi un objet interactif à lui seul, sans "animation" —
+// il identifie une navigation vers un panneau/une page de contenu plutôt qu'une animation locale
+// (voir data/links.ts, ui/linkOverlay.ts, "clic de base" dans CLAUDE.md racine).
 export function collectInteractiveObjects(model: THREE.Object3D): THREE.Object3D[] {
   const objects: THREE.Object3D[] = [];
   model.traverse((child) => {
-    if (child.userData.animation === true) {
+    if (child.userData.animation === true || typeof child.userData.link === "string") {
       objects.push(child);
     }
   });

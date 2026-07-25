@@ -56,5 +56,5 @@ export async function buildOfficeScene(): Promise<SceneAssets> {
     litWarm(model, `Led_pannel${i}`, group, 0.67, 0.1, 0);
   }
 
-  return { group, interactiveObjects: collectInteractiveObjects(model) };
+  return { group, model, interactiveObjects: collectInteractiveObjects(model) };
 }

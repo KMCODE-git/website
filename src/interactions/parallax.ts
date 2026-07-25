@@ -1,7 +1,7 @@
 import * as THREE from "three";
 
-const MAX_OFFSET_X = 0.2;
-const MAX_OFFSET_Y = 0.12;
+const MAX_OFFSET_X = 0.28;
+const MAX_OFFSET_Y = 0.17;
 const LERP_FACTOR = 0.06;
 
 export interface ParallaxRig {

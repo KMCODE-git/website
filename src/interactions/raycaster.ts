@@ -10,7 +10,9 @@ const CLICK_DRAG_THRESHOLD = 6;
 function findInteractiveAncestor(object: THREE.Object3D | null): THREE.Object3D | null {
   let current = object;
   while (current) {
-    if (current.userData.animation === true) return current;
+    // "link" rend aussi un objet interactif à lui seul (voir objects/loader.ts,
+    // collectInteractiveObjects) — pas seulement "animation".
+    if (current.userData.animation === true || typeof current.userData.link === "string") return current;
     current = current.parent;
   }
   return null;

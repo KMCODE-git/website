@@ -23,8 +23,11 @@ const STRUCTURAL_KEYS = new Set(["defaultCamera", "entries", "focus"]);
 // "screen" n'en fait pas partie : ce n'est plus un animationType à poser sur l'objet
 // interactif racine (voir objects/CLAUDE.md), seulement sur un sous-objet — un objet racine
 // avec animationType="screen" serait donc à tort signalé "non reconnu" ci-dessous.
-const KNOWN_ANIMATION_TYPES = new Set(["zoom", "swing", "swing_back", "spin", "bounce", "move"]);
+const KNOWN_ANIMATION_TYPES = new Set(["zoom", "swing", "swing_back", "spin", "bounce", "move", "swap", "swap_light_color"]);
 const KNOWN_TRIGGERS = new Set(["hover", "click"]);
+// Valeurs de "link" avec un template dans data/links.ts (voir aussi ui/linkOverlay.ts) — pas
+// besoin d'animationType/animationTrigger pour ces objets, le clic est toujours actif.
+const KNOWN_LINKS = new Set(["contact", "hobbies", "projects"]);
 
 async function main() {
   const fileSource = readFileSync(SCENES_FILE, "utf-8");
@@ -59,7 +62,7 @@ async function main() {
   }
 
   if (objects.length === 0) {
-    console.log("Aucun objet interactif (animation===true) trouvé.");
+    console.log("Aucun objet interactif (animation===true ou link) trouvé.");
     return;
   }
 
@@ -83,6 +86,18 @@ async function main() {
     }
 
     const object = group[0];
+
+    // "link" rend l'objet cliquable à lui seul (clic toujours actif) — pas besoin
+    // d'animationType/animationTrigger, donc pas de sens à vérifier "focus"/trigger pour lui.
+    if (object.link) {
+      const linkKnown = KNOWN_LINKS.has(object.link);
+      console.log(`  - ${name} — link "${object.link}"${linkKnown ? "" : " (non reconnu !)"}`);
+      if (!linkKnown) {
+        suggestions.push(`"${name}" : link "${object.link}" sans template dans data/links.ts — le clic n'ouvrira rien.`);
+      }
+      continue;
+    }
+
     const hasOverride = overrideKeys.has(name);
     // "focus" ne concerne que animationType="zoom" (seul type qui bouge la caméra) — pour les
     // autres, ce qui compte est plutôt animationTrigger (quand ça se déclenche).
