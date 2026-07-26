@@ -12,7 +12,15 @@ dracoLoader.setDecoderPath("/draco/");
 const loader = new GLTFLoader();
 loader.setDRACOLoader(dracoLoader);
 
-export async function loadModel(path: string): Promise<THREE.Group> {
+export interface LoadedModel {
+  scene: THREE.Group;
+  // Clips d'animation Blender embarqués dans le glTF (ex. Aquarium : poissons/bulles) — un seul
+  // clip peut regrouper plusieurs objets/canaux (voir "animationClip" dans objects/CLAUDE.md),
+  // pas forcément un clip par objet interactif.
+  animations: THREE.AnimationClip[];
+}
+
+export async function loadModel(path: string): Promise<LoadedModel> {
   const gltf = await loader.loadAsync(path);
   gltf.scene.traverse((child) => {
     if (child instanceof THREE.Mesh) {
@@ -20,7 +28,17 @@ export async function loadModel(path: string): Promise<THREE.Group> {
       child.receiveShadow = true;
     }
   });
-  return gltf.scene;
+  return { scene: gltf.scene, animations: gltf.animations };
+}
+
+// Associe un clip à un objet interactif portant la Custom Property "animationClip" : par nom en
+// priorité (renommer l'Action Blender pour matcher object.name est le plus robuste si plusieurs
+// objets ont chacun leur clip un jour), sinon par défaut le seul clip du fichier s'il n'y en a
+// qu'un — cas de l'Aquarium aujourd'hui (clip nommé "Animation" par défaut, jamais renommé).
+export function findClipForObject(animations: THREE.AnimationClip[], object: THREE.Object3D): THREE.AnimationClip | null {
+  const byName = THREE.AnimationClip.findByName(animations, object.name);
+  if (byName) return byName;
+  return animations.length === 1 ? animations[0] : null;
 }
 
 // Un objet devient interactif avec une Custom Property Blender : "animation" (Boolean,

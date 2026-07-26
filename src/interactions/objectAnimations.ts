@@ -153,6 +153,12 @@ interface LightColorSwap {
 export interface ObjectAnimations {
   setHovered: (object: THREE.Object3D | null) => void;
   trigger: (object: THREE.Object3D, animationType: string | undefined) => void;
+  // "animationClip" (voir objects/CLAUDE.md) : démarre/arrête un AnimationClip glTF embarqué
+  // (ex. Aquarium, poissons/bulles) raciné sur `object`, couplé au cycle de vie du déclencheur
+  // (survol ou clic, peu importe lequel — voir main.ts) comme "screen" pour le survol : actif
+  // tant que la condition (survolé, ou zoomé pour un déclenchement au clic) l'est, pas un
+  // one-shot. Indépendant d'animationType/trigger() ci-dessus.
+  setClipActive: (object: THREE.Object3D, clip: THREE.AnimationClip, active: boolean) => void;
   update: () => void;
 }
 
@@ -174,6 +180,17 @@ export function createObjectAnimations(): ObjectAnimations {
   // puisque tous les descendants avancent ensemble d'un cran au même clic.
   const lightColorIndex = new WeakMap<THREE.Object3D, number>();
   const lightColorSwaps = new Map<THREE.MeshStandardMaterial, LightColorSwap>();
+  // "animationClip" (Aquarium, etc.) : un mixer+action par objet, créés au premier
+  // setClipActive() puis réutilisés ensuite (mis en pause plutôt que détruits/recréés à chaque
+  // aller-retour, pour que la nage reprenne exactement où elle en était plutôt que de
+  // recommencer à zéro à chaque survol/clic) — clé = l'objet racine du mixer (pas ses enfants
+  // animés par les tracks du clip).
+  interface ClipPlayback {
+    mixer: THREE.AnimationMixer;
+    action: THREE.AnimationAction;
+  }
+  const clipPlaybacks = new Map<THREE.Object3D, ClipPlayback>();
+  let lastClipUpdateTime: number | null = null;
   let hoveredObject: THREE.Object3D | null = null;
 
   // Valeur Z actuelle d'un enfant, en tenant compte d'un swap déjà en cours pour lui (sinon sa
@@ -226,6 +243,21 @@ export function createObjectAnimations(): ObjectAnimations {
       material.emissiveIntensity = TARGET_LUMINANCE / relativeLuminance(tmpColor);
       if (swap.light) swap.light.color.copy(tmpColor);
       if (u >= 1) lightColorSwaps.delete(material);
+    }
+  }
+
+  // Delta en secondes depuis le dernier appel (AnimationMixer.update() attend des secondes, pas
+  // des millisecondes) — calculé ici plutôt qu'avec un THREE.Clock pour rester cohérent avec le
+  // reste du fichier (performance.now() partout, pas de dépendance Three.js supplémentaire).
+  function updateClipMixers() {
+    if (clipPlaybacks.size === 0) return;
+    const now = performance.now();
+    const delta = lastClipUpdateTime === null ? 0 : (now - lastClipUpdateTime) / 1000;
+    lastClipUpdateTime = now;
+    // Mixer mis à jour même si son action est en pause (coût négligeable pour un seul clip) —
+    // plus simple que de ne mettre à jour que les actifs, et ne change rien au résultat.
+    for (const { mixer } of clipPlaybacks.values()) {
+      mixer.update(delta);
     }
   }
 
@@ -410,10 +442,30 @@ export function createObjectAnimations(): ObjectAnimations {
       // (voir setHovered()/setScreenHovered() plus haut), pas déclenché au clic — un clic n'a
       // pas de moment naturel "fin de survol" pour l'éteindre à nouveau.
     },
+    setClipActive(object, clip, isActive) {
+      // Mouvement pur sans état "figé" pertinent (contrairement à "screen", qui peut sauter
+      // directement à une intensité fixe) — désactivé entièrement sous prefers-reduced-motion,
+      // comme swing/spin/bounce/move/swap.
+      if (reducedMotion) return;
+      let playback = clipPlaybacks.get(object);
+      if (!playback) {
+        const mixer = new THREE.AnimationMixer(object);
+        const action = mixer.clipAction(clip);
+        action.setLoop(THREE.LoopRepeat, Infinity);
+        action.play();
+        action.paused = true;
+        playback = { mixer, action };
+        clipPlaybacks.set(object, playback);
+      }
+      // Pause/reprend plutôt que stop()/reset() : la nage reprend exactement où elle en était à
+      // la prochaine activation, au lieu de recommencer à zéro à chaque survol/clic.
+      playback.action.paused = !isActive;
+    },
     update() {
       updateScreenGlows();
       updateSwaps();
       updateLightColorSwaps();
+      updateClipMixers();
       if (active.size === 0) return;
 
       const positionOffset = new THREE.Vector3();

@@ -41,6 +41,17 @@ Le survol-lift, lui, n'est **pas** concerné par `animationTrigger` — `objectA
 
 `"screen"` ne passe **pas** par `trigger()` du tout — voir `objects/CLAUDE.md`. Il est géré à part, directement dans `setHovered()` (`objectAnimations.ts`), couplé au survol comme le lift : recherche des sous-objets `animationType="screen"` dans la hiérarchie de l'objet qui vient d'être (dé)survolé, et bascule leur cible d'allumage en conséquence. Un clic ne déclenche jamais "screen" (pas de moment naturel "fin de survol" pour l'éteindre).
 
+## `animationClip` : couplé au déclencheur présent, pas à `trigger()`
+
+Comme `"screen"`, `animationClip` (voir `objects/CLAUDE.md`) ne passe pas par `objectAnimations.trigger()` — il a son propre `setClipActive(object, clip, active)`, appelé depuis trois sites de `main.ts` selon le déclencheur présent sur l'objet (`object.userData.animationTrigger`, lu directement, indépendamment de ce que fait par ailleurs `animationType`) :
+- `setHovered()` : si l'objet **qui vient de perdre le survol** avait `animationTrigger === "hover"`, `setClipActive(..., false)` ; si l'objet **qui vient de le gagner** l'a, `setClipActive(..., true)` — même moment que le hover-lift, avant même de regarder `animationType`.
+- `selectEntry()` : si l'objet cliqué a `animationTrigger === "click"`, `setClipActive(..., true)` — juste avant la logique `animationType === "zoom"` qui suit, pour que ça fonctionne que ce même clic déclenche aussi un zoom ou non (cas de `Aquarium`, qui a les deux).
+- `closeActive()` : si l'objet actuellement actif (`activeId`) a `animationTrigger === "click"`, `setClipActive(..., false)` — c'est le pendant "sortie" du point précédent, appelé avant même de lancer le tween de dézoom.
+
+Une fonction utilitaire locale à `main.ts` (`setClipActiveIfAny(object, active)`) centralise la vérification `animationClip === true` + résolution du clip (`userData.resolvedAnimationClip`, posé une fois dans `init()`) et ne fait rien si l'objet n'en a pas — permet d'appeler ça sans condition à chaque site ci-dessus plutôt que de dupliquer la garde trois fois.
+
+**Pourquoi pas juste "boucle indéfiniment dès le premier déclenchement, sans jamais s'arrêter"** (design initial, explicitement rejeté) : un clip qui continue de tourner après être sorti du zoom/du survol n'a pas de moment naturel où l'utilisateur comprend que "c'est fini" — le couplage symétrique démarrage/arrêt donne un signal cohérent avec tout le reste du système d'interaction (le survol-lift et `"screen"` s'arrêtent aussi net à la sortie du survol).
+
 ## Pourquoi `"zoom"` échappe à `animationTrigger`
 
 Décision prise faute de précision explicite du besoin, à corriger si ce n'est pas voulu : un zoom caméra déclenché au survol casserait la règle "sortie uniquement par clic ailleurs/Échap" (un utilisateur qui bouge juste la souris sur l'objet se retrouverait zoomé sans l'avoir demandé, sans geste symétrique évident pour dézoomer). `animationType === "zoom"` est donc géré à part dans `selectEntry()`, toujours au clic, indépendamment de `animationTrigger`.
@@ -63,6 +74,7 @@ Diffère selon le gabarit (`data/links.ts`, voir aussi `objects/CLAUDE.md`) :
 
 - `isAnimating` empêche de lancer un nouveau tween pendant qu'un autre tourne (`cameraRig` n'a aucune protection interne contre les appels qui se chevauchent).
 - `activeId` empêche de sélectionner un deuxième objet pendant qu'on est déjà zoomé sur le premier — vaut aussi pour `link="page"`, qui pose `activeId` exactement comme `animationType="zoom"` (voir plus haut).
+- `sceneEntranceActive` bloque tout hover/clic (`onHover`/`onClick` du picker, et `selectEntry()` directement — couvre donc aussi le clavier via `accessibleNav`) tant que l'animation d'arrivée (`sceneEntrance.ts`) n'est pas terminée. Sans ce verrou, survoler un objet encore en train de tomber déclenche `objectAnimations.setHovered()` (hover-lift), qui écrit sur le même `object.position.y` que le tween de chute en cours — les deux se battent sur la même frame et l'objet reste visuellement bloqué à hauteur de la souris au lieu de terminer sa chute (bug vécu). `true` à l'initialisation, repassé à `false` dans le `onComplete` de `playSceneEntrance()` (`main.ts`, `init()`) — y compris le cas `prefers-reduced-motion`, où `playSceneEntrance()` appelle `onComplete` immédiatement (plan vide, voir `sceneEntrance.ts`).
 
 ## Sortir d'un zoom
 

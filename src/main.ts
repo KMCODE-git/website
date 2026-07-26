@@ -1,5 +1,5 @@
 import "./style.css";
-import { Box3, Vector3, type Object3D } from "three";
+import { Box3, Vector3, type AnimationClip, type Object3D } from "three";
 import { createScene } from "./scene";
 import { createCamera, handleCameraResize } from "./camera";
 import { createRenderer, handleRendererResize } from "./renderer";
@@ -16,6 +16,7 @@ import { createAccessibleNav } from "./ui/accessibleNav";
 import { createLoadingUi } from "./ui/loading";
 import { createLinkOverlay } from "./ui/linkOverlay";
 import { computeAutoFocus } from "./objects/autoFocus";
+import { findClipForObject } from "./objects/loader";
 import { sceneConfig, type FocusEntry } from "./data/scenes";
 import { linkTemplates } from "./data/links";
 
@@ -47,16 +48,39 @@ const defaultCameraTarget = new Vector3(...sceneConfig.defaultCamera.target);
 
 let activeId: string | null = null;
 let isAnimating = false;
+// Bloque tout hover/clic tant que l'animation d'arrivée (interactions/sceneEntrance.ts) tourne —
+// sans ça, survoler un objet encore en train de tomber déclenche le hover-lift
+// (objectAnimations.setHovered()), qui écrit sur le même object.position.y que le tween de chute
+// en cours : les deux se battent sur la même frame et l'objet reste visuellement bloqué au
+// contact de la souris au lieu de terminer sa chute (bug vécu). Repassé à false dans le
+// onComplete de playSceneEntrance() (voir init()).
+let sceneEntranceActive = true;
 let hoveredObject: Object3D | null = null;
 let currentEntries: Record<string, FocusEntry> = {};
 let currentObjectsById: Map<string, Object3D> = new Map();
 let currentAllInteractiveObjects: Object3D[] = [];
 
+// "animationClip" (ex. Aquarium : poissons/bulles) — couplé au cycle de vie du déclencheur
+// (peu importe lequel, voir CLAUDE.md racine) plutôt qu'un one-shot fire-and-forget : démarré à
+// l'entrée, arrêté à la sortie. setClipActive() est un no-op silencieux si l'objet n'a pas de
+// clip résolu, donc appelable sans vérifier animationClip/resolvedAnimationClip à chaque site.
+function setClipActiveIfAny(object: Object3D | null | undefined, active: boolean) {
+  if (!object || object.userData.animationClip !== true) return;
+  const clip = object.userData.resolvedAnimationClip as AnimationClip | undefined;
+  if (clip) objectAnimations.setClipActive(object, clip, active);
+}
+
 function setHovered(object: Object3D | null) {
   if (hoveredObject === object) return;
+  const previouslyHovered = hoveredObject;
   hoveredObject = object;
   canvas.style.cursor = object ? "pointer" : "default";
   objectAnimations.setHovered(object);
+  // Couplage survol pour "animationClip" quand animationTrigger="hover" — symétrique à "screen"
+  // (toujours actif tant que survolé, pas de timeline fixe). Ignoré si animationTrigger="click"
+  // (voir selectEntry()/closeActive() pour ce cas).
+  if (previouslyHovered?.userData.animationTrigger === "hover") setClipActiveIfAny(previouslyHovered, false);
+  if (object?.userData.animationTrigger === "hover") setClipActiveIfAny(object, true);
   // "zoom" reste déclenché uniquement au clic quel que soit animationTrigger (voir CLAUDE.md
   // racine, "Interaction et caméra") — le survol-lift ci-dessus reste actif dans tous les cas.
   if (object && object.userData.animationTrigger === "hover" && object.userData.animationType !== "zoom") {
@@ -66,6 +90,10 @@ function setHovered(object: Object3D | null) {
 
 function closeActive() {
   if (activeId === null || isAnimating) return;
+  // Couplage clic pour "animationClip" quand animationTrigger="click" — arrêté "à la sortie"
+  // (ici), démarré dans selectEntry() (voir plus bas), même mécanique que le survol ci-dessus.
+  const activeObject = currentObjectsById.get(activeId);
+  if (activeObject?.userData.animationTrigger === "click") setClipActiveIfAny(activeObject, false);
   isAnimating = true;
   // Ferme d'abord l'overlay "page" éventuellement ouvert (voir openLink()) — avant que la
   // caméra ne commence à dézoomer, pour ne pas voir le contenu plein écran pendant le tween.
@@ -117,11 +145,17 @@ function openLink(object: Object3D): boolean {
 }
 
 function selectEntry(id: string) {
-  if (isAnimating || activeId !== null) return;
+  if (sceneEntranceActive || isAnimating || activeId !== null) return;
   const object = currentObjectsById.get(id);
   if (!object) return;
 
   if (openLink(object)) return;
+
+  // Couplage clic pour "animationClip" quand animationTrigger="click" (ex. Aquarium, même clic
+  // que le zoom ci-dessous) — démarré ici, arrêté dans closeActive() ("à la sortie" du zoom),
+  // voir setClipActiveIfAny()/CLAUDE.md racine. Indépendant d'animationType (fonctionne que le
+  // clic déclenche aussi un zoom ou non).
+  if (object.userData.animationTrigger === "click") setClipActiveIfAny(object, true);
 
   if (object.userData.animationType === "zoom") {
     const entry = currentEntries[id];
@@ -149,9 +183,21 @@ const accessibleNav = createAccessibleNav(selectEntry);
 async function init(): Promise<void> {
   loadingUi.show();
 
-  const { group, model, interactiveObjects: allInteractiveObjects } = await buildOfficeScene();
+  const { group, model, interactiveObjects: allInteractiveObjects, animations } = await buildOfficeScene();
   scene.add(group);
   currentAllInteractiveObjects = allInteractiveObjects;
+
+  // Associe une fois pour toutes chaque objet "animationClip" à son AnimationClip glTF (voir
+  // objects/loader.ts, findClipForObject()) — évite de refaire cette recherche à chaque clic.
+  for (const object of allInteractiveObjects) {
+    if (object.userData.animationClip !== true) continue;
+    const clip = findClipForObject(animations, object);
+    if (!clip) {
+      console.warn(`"${object.name}" a animationClip=true mais aucun AnimationClip correspondant n'a été trouvé dans le glTF.`);
+      continue;
+    }
+    object.userData.resolvedAnimationClip = clip;
+  }
 
   // Précompile les shaders de tous les matériaux de la scène avant de révéler quoi que ce soit
   // (encore masqué par l'écran de chargement à ce stade).
@@ -172,11 +218,11 @@ async function init(): Promise<void> {
   currentObjectsById = new Map(interactiveObjects.map((object) => [object.name, object]));
   createPointerPicker(camera, canvas, interactiveObjects, {
     onHover(id) {
-      if (activeId !== null || isAnimating) return;
+      if (sceneEntranceActive || activeId !== null || isAnimating) return;
       setHovered(id ? (currentObjectsById.get(id) ?? null) : null);
     },
     onClick(id) {
-      if (isAnimating) return;
+      if (sceneEntranceActive || isAnimating) return;
       if (activeId === null) {
         if (id) selectEntry(id);
       } else {
@@ -215,6 +261,7 @@ async function init(): Promise<void> {
   playSceneEntrance(sceneEntrancePlan, () => {
     renderer.shadowMap.autoUpdate = true;
     renderer.shadowMap.needsUpdate = true;
+    sceneEntranceActive = false;
   });
 }
 

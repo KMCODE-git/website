@@ -43,7 +43,7 @@ function litWarm(model: THREE.Object3D, name: string, group: THREE.Group, emissi
 export async function buildOfficeScene(): Promise<SceneAssets> {
   const group = new THREE.Group();
 
-  const model = await loadModel(MODEL_PATH);
+  const { scene: model, animations } = await loadModel(MODEL_PATH);
 
   // Aligne la base du modèle sur le sol (y=0), quelle que soit l'origine choisie à l'export.
   const bounds = new THREE.Box3().setFromObject(model);
@@ -56,5 +56,5 @@ export async function buildOfficeScene(): Promise<SceneAssets> {
     litWarm(model, `Led_pannel${i}`, group, 0.67, 0.1, 0);
   }
 
-  return { group, model, interactiveObjects: collectInteractiveObjects(model) };
+  return { group, model, interactiveObjects: collectInteractiveObjects(model), animations };
 }

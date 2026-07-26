@@ -8,4 +8,7 @@ export interface SceneAssets {
   // ce `model` en entier, animé comme un bloc rigide plutôt que pièce par pièce).
   model: THREE.Object3D;
   interactiveObjects: THREE.Object3D[];
+  // Clips d'animation Blender embarqués dans le glTF — voir "animationClip" dans
+  // objects/CLAUDE.md et objects/loader.ts (findClipForObject()).
+  animations: THREE.AnimationClip[];
 }
