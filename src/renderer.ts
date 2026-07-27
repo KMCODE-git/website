@@ -1,15 +1,25 @@
 import * as THREE from "three";
-import { isLowPowerDevice } from "./deviceCapabilities";
 
 export function createRenderer(canvas: HTMLCanvasElement): THREE.WebGLRenderer {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  // Pas d'antialiasing MSAA ici (`antialias: true` retiré) : toute la scène passe exclusivement
+  // par composer.render() (postprocessing.ts), jamais par un renderer.render() direct — la scène
+  // est rasterisée dans une render target hors-écran non multisamplée (EffectComposer, sans
+  // `samples`), donc l'antialiasing du contexte WebGL par défaut ne s'applique jamais aux arêtes
+  // de la géométrie (seule la passe finale, un simple quad plein écran, touche le vrai canvas —
+  // rien à lisser sur un rectangle). Le flag ne faisait donc déjà rien visuellement, juste
+  // allouer un framebuffer par défaut multisamplé pour rien.
+  const renderer = new THREE.WebGLRenderer({ canvas });
   renderer.setSize(window.innerWidth, window.innerHeight);
-  // Plafond réduit sur mobile/tactile (voir deviceCapabilities.ts) : le pixel ratio multiplie la
-  // mémoire de TOUS les render targets (scène, shadow map, passes de bloom) — un devicePixelRatio
-  // de 3 (courant sur téléphone) capé à 2 reste déjà 4x plus de pixels à traiter qu'à 1x.
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, isLowPowerDevice ? 1 : 2));
-  renderer.shadowMap.enabled = !isLowPowerDevice;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  // Recalculée manuellement (renderer.shadowMap.needsUpdate) plutôt qu'à chaque frame par
+  // défaut — la scène est immobile la plupart du temps (parallaxe légère mise à part, qui ne
+  // déplace que la caméra, jamais ce qui projette une ombre) ; recalculer une shadow map
+  // 2048×2048 en continu même quand rien ne bouge est un coût GPU permanent pour rien. main.ts
+  // (animate()) ne force needsUpdate=true que les frames où interactions/objectAnimations.ts
+  // rapporte un changement de géométrie réel — voir CLAUDE.md racine.
+  renderer.shadowMap.autoUpdate = false;
   // À `true` par défaut dans Three.js : fait appeler getShaderInfoLog()/getProgramInfoLog()
   // (synchronisation GPU⇄CPU coûteuse) à chaque compilation de programme shader — utile en
   // debug, mais mesuré comme dominant ~85-99% du temps de chaque frame ici (profilé via Chrome

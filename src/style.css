@@ -91,6 +91,153 @@ body {
   }
 }
 
+.mobile-blocker {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  /* Même couleur que scene.ts/.loading (voir style.css racine, html/body) : pas de flash de
+     couleur différente, cohérent avec le reste du site même si la scène 3D ne se charge jamais
+     ici. */
+  background: #d9c7a3;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.mobile-blocker__message {
+  margin: 0;
+  max-width: 28rem;
+  text-align: center;
+  font-size: 1.1rem;
+  color: #2a2620;
+}
+
+.site-menu {
+  position: fixed;
+  top: 1.5rem;
+  right: 1.5rem;
+  /* Sous .loading (30) : reste masqué derrière l'écran de chargement plein écran tant que le
+     modèle charge. Sous .link-overlay (40) : un gabarit "side"/"page" ouvert reprend la priorité
+     visuelle et de clic, cohérent avec le reste de l'app (une seule chose "active" à la fois). */
+  z-index: 25;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* Effet verre dépoli (glassmorphism) : fond très translucide + blur+saturate marqués (plutôt
+   qu'un simple fond gris semi-opaque) pour que les teintes de la scène derrière restent visibles
+   et vivantes à travers le bouton/panneau, avec une bordure claire fine + une légère ombre pour
+   détacher l'ensemble du fond de la scène. Partagé avec .sound-toggle (ui/soundToggle.ts) — même
+   traitement visuel pour tout bouton rond fixe au-dessus de la scène, un seul endroit à ajuster. */
+.site-menu__toggle,
+.sound-toggle {
+  width: 3rem;
+  height: 3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+  background: rgba(20, 21, 26, 0.3);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  color: #f2f3f5;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.site-menu__toggle:hover,
+.site-menu__toggle:focus-visible,
+.sound-toggle:hover,
+.sound-toggle:focus-visible {
+  background: rgba(20, 21, 26, 0.5);
+  border-color: rgba(255, 255, 255, 0.55);
+}
+
+.sound-toggle {
+  position: fixed;
+  top: 1.5rem;
+  left: 1.5rem;
+  /* Même logique de z-index que .site-menu (voir plus bas) : masqué derrière .loading tant que
+     le modèle charge, et derrière .link-overlay pendant qu'un gabarit est affiché. */
+  z-index: 25;
+}
+
+.site-menu__dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #f2f3f5;
+}
+
+.site-menu__close-icon {
+  color: #f2f3f5;
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.site-menu__panel {
+  position: absolute;
+  top: calc(100% + 0.75rem);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  padding: 0.5rem;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(20, 21, 26, 0.4);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  opacity: 0;
+  transform: translateY(-8px);
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.site-menu--open .site-menu__panel {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.site-menu__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #f2f3f5;
+  font-size: 1rem;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.site-menu__item:hover,
+.site-menu__item:focus-visible {
+  background: rgba(242, 243, 245, 0.1);
+}
+
+.site-menu__arrow {
+  color: rgba(242, 243, 245, 0.6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-menu__panel {
+    transition: none;
+  }
+}
+
 .link-overlay {
   position: fixed;
   inset: 0;

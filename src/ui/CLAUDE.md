@@ -6,6 +6,8 @@ Il n'y a plus de panneau de contenu **universel** ni de rond blanc de survol (vo
 
 Nuance : `linkOverlay.ts` (voir plus bas) réintroduit un overlay de contenu, mais **scopé aux seuls objets portant la Custom Property `link`** — pas un panneau systématique sur chaque objet interactif comme l'ancien système retiré. Ne pas confondre les deux.
 
+Autre nuance, avec `siteMenu.ts` (voir plus bas) : ce n'est **pas** un retour de l'ancienne `sceneNav.ts` (barre flottante de navigation entre scènes, retirée avec l'architecture multi-scènes — voir `CLAUDE.md` racine "Page unique"). `siteMenu.ts` ne change jamais de scène (il n'y en a qu'une) — il ouvre les mêmes gabarits de contenu que les objets `link` de la scène 3D (`data/links.ts`), juste depuis un point d'entrée fixe plutôt qu'en cherchant/cliquant l'objet correspondant.
+
 ## `accessibleNav.ts`
 
 Fallback clavier pour les objets interactifs : un bouton réel par entrée (visuellement caché via `.sr-nav__button`, visible seulement au `:focus`), appelant le même `onSelect(id)` que le raycaster — comportement identique par les deux chemins.
@@ -30,6 +32,24 @@ Overlay de contenu déclenché par la Custom Property Blender `link` (voir `CLAU
 - Contenu actuellement **en placeholder façon clés i18next** (`template.title`/`template.body` affichés tels quels, ex. `"contact.title"`) — pas de vrai système de traduction branché, voir `data/links.ts`.
 
 **Piège rencontré, résolu en séparant les éléments** : la première implémentation réutilisait un **seul** `panel` entre les deux gabarits (classes `--side`/`--page` togglées dans `open()`) — "side" anime `transform: translateX(...)`, "page" anime `transform: scale(...)`/`opacity`, deux transforms incompatibles sur le même élément. Ouvrir un gabarit juste après avoir fermé l'autre faisait démarrer la transition CSS depuis l'état "fermé" de l'**ancien** gabarit au lieu du nouveau — l'ouverture suivante jouait la mauvaise animation, même après avoir essayé un reset explicite (retrait de `--visible` + reflow forcé avant réajout) : le bug persistait. Deux éléments distincts, jamais retypés après création, éliminent la classe de bug entièrement — chacun n'a jamais qu'un seul état "fermé" possible, sa transition ne dépend jamais de ce qui était ouvert avant.
+
+## `siteMenu.ts`
+
+Menu fixe (coin haut-droite, `position: fixed`, `.site-menu`) : un bouton rond ("···", devient "×" une fois ouvert) qui déploie un petit panneau listant les mêmes pages que les objets `link` de la scène (`data/links.ts`) — accès direct sans devoir chercher/cliquer l'objet 3D correspondant. `createSiteMenu(entries, onSelect)` prend une liste `{ id, label }[]` (labels choisis côté code, pas de vrai contenu i18n branché — voir `data/links.ts`) et appelle `onSelect(id)` au clic sur une entrée ; `main.ts` câble ça vers `activateLink(id, null)` (`selectMenuEntry()`), la même fonction que celle utilisée en interne par `openLink()` quand on clique directement un objet `link` en 3D — un seul chemin pour ouvrir un gabarit, deux points d'entrée.
+
+- **`position: fixed` suffit à l'isoler de la parallaxe** (`interactions/parallax.ts`) : la parallaxe ne bouge que `camera.position`/`camera.lookAt`, jamais le DOM — n'importe quel élément DOM en `fixed`/`absolute` est déjà insensible à cet effet sans rien coder de spécial.
+- **`z-index: 25`** (`.site-menu`, `style.css`) — volontairement **sous** `.loading` (30, reste masqué derrière l'écran de chargement tant que le modèle n'a pas fini de charger) et **sous** `.link-overlay` (40, un gabarit "side"/"page" déjà ouvert reprend la priorité visuelle/de clic). Conséquence pour les utilisateurs souris : le bouton du menu devient visuellement inatteignable pendant qu'un gabarit est affiché — cohérent avec le reste de l'app (une seule chose "active" à la fois, jamais deux surfaces cliquables superposées), pas une limitation accidentelle.
+- **Fermeture** : re-clic sur le bouton, clic n'importe où en dehors du menu (`pointerdown` sur `document`, même logique que le backdrop de `link-overlay.ts` "side"), sélection d'une entrée, ou Échap (`main.ts`, même handler global que `closeActive()`/`linkOverlay.close()`).
+- **`activateLink(id, sourceObject)`** (`main.ts`) est la factorisation qui rend ça possible : la logique de `openLink()` (utilisée depuis un clic 3D) a été extraite pour accepter soit l'objet cliqué directement (cas normal), soit `null` (cas menu fixe) — dans ce second cas, l'objet nécessaire au zoom d'un gabarit `"page"` (`computeAutoFocus()`) est retrouvé via `linkObjectsById` (`Map<linkId, Object3D>`, reconstruite dans `init()` à partir de `interactiveObjects`, la même liste que `currentObjectsById`). Les gabarits `"side"` n'ont pas besoin de cet objet — ils fonctionnent identiquement par les deux chemins.
+- **Gardes dans `selectMenuEntry()`** identiques à celles du raycaster (`sceneEntranceActive`/`isAnimating`/`activeId`) + `linkOverlay.isOpen()` en plus — nécessaire ici parce que `.site-menu` (z-index 25) reste techniquement joignable au clavier (Tab) même visuellement recouvert par un gabarit déjà ouvert (z-index 40) ; sans cette garde, valider une entrée au clavier pendant qu'un autre gabarit est déjà affiché pourrait lancer un second zoom/overlay en parallèle.
+
+## `soundToggle.ts`
+
+Bouton fixe (coin haut-gauche, symétrique de `siteMenu.ts` à droite) qui coupe/réactive les sons ponctuels (`audio/soundEffects.ts`, voir aussi `audio/CLAUDE.md`). `createSoundToggle(initialMuted, onToggle)` gère son propre état visuel (icône haut-parleur/haut-parleur barré en SVG inline, pas d'emoji — rendu inconsistant selon la plateforme/OS) et appelle `onToggle(muted)` à chaque clic ; `main.ts` s'en sert pour piloter `soundEffects.setMuted()`.
+
+- **Même classe CSS que `.site-menu__toggle`** (`.sound-toggle`, `style.css`, sélecteurs combinés) : bouton rond, verre dépoli, même `z-index: 25` (masqué derrière `.loading` puis `.link-overlay`, cohérent avec `siteMenu.ts` ci-dessus) — un seul endroit à ajuster si le style change.
+- **Pas de retour conservé côté `main.ts`** (`createSoundToggle(...)` appelé sans assigner à une variable) — contrairement à `siteMenu`, rien d'autre n'a besoin de fermer ce bouton (pas de panneau à refermer, juste un toggle) ni de lire son état ailleurs.
+- Coché "actif" par défaut (son non coupé) — n'implique pas qu'un son puisse jouer avant le premier geste utilisateur : la politique d'autoplay des navigateurs bloque de toute façon l'`AudioContext` jusque-là, voir `audio/CLAUDE.md`.
 
 ## Convention générale pour tout nouvel élément DOM ajouté ici
 

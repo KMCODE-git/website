@@ -1,5 +1,4 @@
 import * as THREE from "three";
-import { isLowPowerDevice } from "./deviceCapabilities";
 
 export interface Lighting {
   group: THREE.Group;
@@ -17,10 +16,7 @@ export function createLighting(): Lighting {
   // direction de la caméra par défaut (defaultCamera, data/scenes.ts, ~(2.5, 2.35, 2.5)) pour un
   // éclairage plus "de face" et moins uniquement plongeant.
   key.position.set(2.5, 3.5, 4.5);
-  // Pas d'ombre portée sur mobile/tactile (voir deviceCapabilities.ts) : la shadow map (2048x2048)
-  // est un framebuffer GPU coûteux en mémoire, un facteur aggravant du crash mémoire rencontré
-  // sur mobile (voir CLAUDE.md racine) en plus de renderer.shadowMap.enabled=false (renderer.ts).
-  key.castShadow = !isLowPowerDevice;
+  key.castShadow = true;
   key.shadow.mapSize.set(2048, 2048);
   key.shadow.camera.near = 1;
   key.shadow.camera.far = 15;
@@ -43,7 +39,14 @@ export function createLighting(): Lighting {
   const rim = new THREE.DirectionalLight(0xffffff, 0.2);
   rim.position.set(-2, 3, -4);
 
-  group.add(ambient, key, fill, rim);
+  // Lumière d'appoint 3/4 avant droite, diffuse : même direction générale que `defaultCamera`
+  // (data/scenes.ts, vue de 3/4 à 45° vers la droite) mais sans ombre portée et à intensité
+  // modérée — adoucit ce côté de la scène plutôt que d'ajouter une deuxième source dure comme
+  // `key`. Complète `key`/`fill`, ne les remplace pas.
+  const frontRight = new THREE.DirectionalLight(0xfff5e6, 0.35);
+  frontRight.position.set(3, 2.2, 3);
+
+  group.add(ambient, key, fill, rim, frontRight);
 
   return { group };
 }

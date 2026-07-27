@@ -1,0 +1,44 @@
+# src/audio/
+
+Sons ponctuels déclenchés par les objets 3D — voir `CLAUDE.md` racine, "Custom Property `sound`", pour la Custom Property Blender qui les active.
+
+## `soundEffects.ts`
+
+`createSoundEffects(soundFiles, exclusiveSoundIds, listener)` (`soundFiles`/`exclusiveSoundIds` = `data/sounds.ts`, `listener` = `THREE.AudioListener` créé une fois dans `main.ts` et attaché à la caméra) retourne `{ play(object, soundId, loop), stop(object, soundId), setMuted(muted), isMuted() }`.
+
+- **`THREE.PositionalAudio`, pas un `<audio>`/`Audio()` global** — cohérent avec le stack vanilla Three.js du projet (pas de dépendance externe), et chaque son se spatialise automatiquement selon la position de l'objet qui l'a déclenché par rapport à la caméra (le `listener` doit être un enfant de `camera`, sinon aucune spatialisation n'a de sens).
+- **`play(object, soundId, loop)`** — `loop` décide si le son se répète indéfiniment (couplé à un état de durée indéterminée : animation `loop=true`, ou zoom) ou joue une seule fois (one-shot classique). `play()` appelle `stop()` avant de rejouer si le son précédent tourne encore (Web Audio refuse un second `play()` sur une source déjà en lecture) — un nouveau déclenchement redémarre le son depuis le début plutôt que de l'ignorer ou de superposer deux lectures.
+- **`stop(object, soundId)`** — no-op silencieux si rien ne joue (jamais déclenché, ou déjà terminé tout seul). Voir "`sound` : démarrage et arrêt" ci-dessous pour qui l'appelle et quand.
+- **Deux caches distincts** : un `THREE.PositionalAudio` par `(objet, soundId)` (créé une fois, réutilisé ensuite — même `object.add(audio)` que pour n'importe quel enfant Three.js), et un `AudioBuffer` décodé par URL (indépendant de l'objet — deux objets qui partagent le même `soundId` ne retéléchargent/redécodent pas deux fois le même fichier).
+- **`setMuted()`/`isMuted()` passent par `listener.setMasterVolume()`/`getMasterVolume()`** (API native `THREE.AudioListener`) plutôt qu'un état "muted" suivi à la main — un seul appel coupe tous les sons déjà en cours ou futurs passant par ce listener, peu importe combien d'objets ont un `sound` actif.
+
+## Débloquer l'`AudioContext` (politique d'autoplay des navigateurs)
+
+Un `AudioContext` démarre `"suspended"` tant qu'aucun geste utilisateur (clic, touche) n'a eu lieu sur la page — jouer un son avant ce geste ne produit aucun son (pas d'erreur visible). `main.ts` écoute `pointerdown`/`keydown` sur `window` une seule fois (`unlockAudioContext()`, retirée après le premier déclenchement) et appelle `soundListener.context.resume()` — `AudioListener.context` pointe déjà vers l'`AudioContext` partagé créé en interne par Three.js (`THREE.AudioContext.getContext()`), pas besoin de le récupérer autrement. Ce geste peut être n'importe où sur la page (pas nécessairement un objet `sound`) : l'objectif est juste d'être prêt dès le premier son réellement déclenché plus tard.
+
+## `sound` : démarrage et arrêt
+
+Câblé dans `main.ts` (`playSoundIfAny(object, loop)`/`stopSoundIfAny(object)`, appelées depuis `setHovered()` si `animationTrigger === "hover"`, `selectEntry()` si `animationTrigger === "click"` ou `animationType === "zoom"`, `closeActive()` pour la sortie de zoom — mêmes sites que `setClipActiveIfAny()`, voir `interactions/CLAUDE.md`).
+
+**Démarrage piloté par `TriggerOutcome`, pas par le seul événement hover/clic** — `objectAnimations.trigger(object, animationType)` renvoie `"started"` / `"blocked"` / `"stop-requested"` ; `main.ts` n'appelle `playSoundIfAny()` que sur `"started"` (un cycle a réellement démarré). Nécessaire parce que `trigger()` peut être appelé plusieurs fois pour un même objet sans que l'animation ne redémarre à chaque fois (verrou anti-re-déclenchement classique — un clic pendant qu'un cycle tourne déjà est ignoré, voir `interactions/CLAUDE.md`) : sans ce garde-fou, enchaîner des clics rejouait le son à chaque clic alors que l'animation, elle, restait bloquée sur son cycle en cours (bug corrigé). Pour `animationType="zoom"` (jamais géré par `objectAnimations.trigger()`), le son est joué directement dans la branche zoom de `selectEntry()`.
+
+**Arrêt centralisé en un seul point par type d'état, jamais au moment du déclenchement** — deuxième bug corrigé : un son plus court que l'animation/le zoom qu'il accompagne finissait de jouer tout seul bien avant que l'utilisateur ne sorte de cet état (l'animation continuait en silence, donnant l'impression d'un bug et poussant à recliquer, ce qui arrêtait toute la boucle au lieu de relancer le son). Fix :
+
+- **`objectAnimations.onOneShotEnd(callback)`** (nouveau) — `main.ts` s'abonne une fois (`objectAnimations.onOneShotEnd((object) => stopSoundIfAny(object))`) pour être notifié exactement quand un cycle `swing`/`swing_back`/`spin`/`bounce`/`move`/`scale_interval` se termine **pour de bon** (voir `interactions/CLAUDE.md`, `finishOneShotCycle()` — pas à chaque relance d'un cycle `loop`, seulement à son arrêt final). Couvre deux cas d'un coup : un one-shot classique dont le son durerait plus longtemps que l'animation (capé à cette durée), et un `loop` arrêté (le son, qui bouclait avec `play(..., true)`, s'arrête au même moment que le dernier passage visuel).
+- **`closeActive()`** appelle `stopSoundIfAny(activeObject)` à la sortie d'un zoom — symétrique à `setClipActiveIfAny(activeObject, false)` juste au-dessus, même timing.
+
+**`loop` passé à `play()`** : `true` pour un objet `loop="true"` (`object.userData.loop === true`) ou pour `animationType="zoom"` (toujours, indépendamment de `loop`) ; `false` sinon (one-shot classique, comportement historique). Contrairement à une conception précédente ("toujours one-shot, même en boucle/zoom"), le son suit désormais la même notion de durée que l'animation qu'il accompagne — c'est justement ce changement qui a nécessité de sortir l'arrêt du moment du déclenchement (un `stop-requested` immédiat aurait coupé le son bien avant que le cycle visuel en cours n'ait fini).
+
+## Sons "exclusifs" : mise en sourdine, pas arrêt
+
+`exclusiveSoundIds: ReadonlySet<string>` (`data/sounds.ts` — `pokemon_theme` sur `Pokeball`, `ambiance_sound` sur `Speaker`) : quand `play()` démarre un son listé ici, `duckAllExcept()` (interne) met tous les **autres** sons actuellement en train de jouer en **sourdine** (`setVolume(0)`, volume d'origine mémorisé dans `duckedVolumes`) plutôt que de les arrêter — pensé pour un son plus long/musical qui n'a pas de sens mélangé à un son déjà en cours, sans pour autant couper une boucle en cours (ex. `Speaker`), ce qui aurait recréé le même problème de "il faut recliquer pour la relancer" déjà corrigé ailleurs (voir "Arrêt centralisé" ci-dessus) — **troisième bug corrigé**, une première version de ce mécanisme coupait net au lieu de mettre en sourdine.
+
+**Restauration (`restoreDucked()`), deux chemins qui se complètent, aucun n'est optionnel** :
+- **`onEnded`** (posé sur l'instance juste avant de jouer un son exclusif) se déclenche quand ce son **se termine tout seul** — mais ne se déclenche **jamais** s'il boucle (`loop=true`, ex. `Pokeball` étant un zoom — voir "`loop` passé à `play()`" ci-dessus) : `THREE.Audio` ne fait jamais fermer une source en boucle indéfiniment, elle continue jusqu'à un `stop()` explicite.
+- **`stop()`** restaure aussi (si `exclusiveSoundIds.has(soundId)`) quand ce son exclusif est coupé **de l'extérieur** — filet de sécurité indispensable précisément pour le cas ci-dessus (un `pokemon_theme` en boucle tant qu'on est zoomé sur `Pokeball` n'a que ce chemin pour jamais restaurer les autres sons, puisqu'il ne "finit" jamais tout seul). `stop()` interne à Three.js met volontairement `source.onended = null` avant d'arrêter la source (voir `Audio.stop()`), donc le hook `onEnded` ne se déclenche jamais après un arrêt explicite — les deux chemins ne se marchent jamais dessus.
+
+Un `soundId` absent de `exclusiveSoundIds` ne met jamais rien d'autre en sourdine — comportement par défaut inchangé. Voir CLAUDE.md racine, "Sons exclusifs", pour les autres options envisagées (un seul son à la fois globalement, groupes/canaux) et pourquoi celle-ci (mise en sourdine ciblée) a été retenue.
+
+## Calibration à prévoir une fois de vrais fichiers en place
+
+Les paramètres de spatialisation (`refDistance`/`rolloffFactor`/`distanceModel` de `THREE.PositionalAudio`) sont laissés à leurs valeurs par défaut Three.js — non calibrés pour l'échelle de la scène (la pièce fait ~4 unités de côté, voir `interactions/CLAUDE.md`). À ajuster une fois de vrais sons chargés si le volume perçu est trop faible/fort selon la distance à la caméra.
