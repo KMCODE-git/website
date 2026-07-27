@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
+import { KTX2Loader } from "three/examples/jsm/loaders/KTX2Loader.js";
 
 // Décodeur Draco requis dès qu'un .glb exporté avec compression géométrique Draco est chargé
 // (GLTFLoader lève sinon "No DRACOLoader instance provided" et n'importe rien) — fichiers
@@ -9,8 +10,27 @@ import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 const dracoLoader = new DRACOLoader();
 dracoLoader.setDecoderPath("/draco/");
 
+// Textures KTX2/Basis Universal (extension glTF KHR_texture_basisu) : réduit fortement le poids
+// des textures (voir CLAUDE.md racine, "Poids du modèle") ET la mémoire GPU consommée au
+// chargement (contrairement à un PNG/JPEG décodé puis re-uploadé tel quel, KTX2 reste compressé
+// une fois en VRAM). Transcodeur servi depuis public/basis/ (copié depuis
+// node_modules/three/examples/jsm/libs/basis/, à resynchroniser si three est mis à jour) — même
+// principe que le décodeur Draco ci-dessus.
+const ktx2Loader = new KTX2Loader();
+ktx2Loader.setTranscoderPath("/basis/");
+
 const loader = new GLTFLoader();
 loader.setDRACOLoader(dracoLoader);
+loader.setKTX2Loader(ktx2Loader);
+
+// KTX2Loader doit choisir le format de transcodage cible (ASTC/ETC1/BC7/PVRTC...) selon ce que le
+// GPU courant supporte réellement — nécessite le WebGLRenderer réel, pas disponible au chargement
+// du module (créé plus tard dans main.ts/startApp()). Appelée une fois depuis main.ts avant le
+// premier loadModel() ; sans cet appel, KTX2Loader lève une erreur au premier fichier .ktx2
+// rencontré ("KTX2Loader: Missing DXT/ETC/PVRTC/ASTC support brut").
+export function configureKtx2Support(renderer: THREE.WebGLRenderer): void {
+  ktx2Loader.detectSupport(renderer);
+}
 
 export interface LoadedModel {
   scene: THREE.Group;

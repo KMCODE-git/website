@@ -20,7 +20,7 @@ import { createSiteMenu } from "./ui/siteMenu";
 import { createSoundToggle } from "./ui/soundToggle";
 import { showMobileBlocker } from "./ui/mobileBlocker";
 import { computeAutoFocus } from "./objects/autoFocus";
-import { findClipForObject } from "./objects/loader";
+import { findClipForObject, configureKtx2Support } from "./objects/loader";
 import { sceneConfig, type FocusEntry } from "./data/scenes";
 import { linkTemplates } from "./data/links";
 import { soundFiles, exclusiveSoundIds } from "./data/sounds";
@@ -50,6 +50,7 @@ function startApp(): void {
   const scene = createScene();
   const camera = createCamera();
   const renderer = createRenderer(canvas);
+  configureKtx2Support(renderer);
   const environmentMap = createEnvironmentMap(renderer);
   const composer = createPostprocessing(renderer, scene, camera);
   const cameraRig = createCameraRig(camera);
@@ -273,12 +274,13 @@ function startApp(): void {
       if (!entry) return;
       // "sound" joué directement ici pour un objet zoom+click (ex. Aquarium) : contrairement aux
       // autres animationType ci-dessous, pas besoin de passer par le résultat de
-      // objectAnimations.trigger() (jamais appelé pour "zoom"). Toujours en boucle (`loop: true`)
-      // — couplé à la durée du zoom lui-même (arrêté dans closeActive()), pas un one-shot qui
-      // finirait de jouer bien avant que l'utilisateur ne dézoome. Aucun risque de rejouer en
-      // double : le chaînage de clics n'est de toute façon pas possible tant qu'on est zoomé
-      // (activeId bloque un second selectEntry(), voir onClick dans init()).
-      if (object.userData.animationTrigger === "click") playSoundIfAny(object, true);
+      // objectAnimations.trigger() (jamais appelé pour "zoom"). One-shot (`loop: false`), pas
+      // couplé à la durée du zoom (retour explicite : plus de boucle pour les sons de zoom) —
+      // `closeActive()` continue d'appeler stopSoundIfAny() à la sortie, sans effet si le son a
+      // déjà fini de lui-même entre-temps (stop() est un no-op silencieux). Aucun risque de
+      // rejouer en double : le chaînage de clics n'est de toute façon pas possible tant qu'on est
+      // zoomé (activeId bloque un second selectEntry(), voir onClick dans init()).
+      if (object.userData.animationTrigger === "click") playSoundIfAny(object, false);
       setHovered(null);
       activeId = id;
       isAnimating = true;
