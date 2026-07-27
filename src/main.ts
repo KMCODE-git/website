@@ -204,7 +204,11 @@ function startApp(): void {
       return true;
     }
 
-    if (template.type === "side") {
+    // "side"/"form" : pas de caméra impliquée, ouverture immédiate — seul "page" (ci-dessous) a
+    // besoin d'un zoom préalable. "form" (contact) suit exactement la même règle que "side" ici :
+    // seule sa géométrie/contenu diffère (voir ui/linkOverlay.ts), pas sa coordination avec
+    // activeId/isAnimating.
+    if (template.type === "side" || template.type === "form") {
       setHovered(null);
       linkOverlay.open(template);
       return true;

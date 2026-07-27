@@ -1,0 +1,9 @@
+{
+  "contact.title": "Contact",
+  "contact.name": "Nom / Société",
+  "contact.email": "E-mail",
+  "contact.phone": "Téléphone",
+  "contact.message": "Demande",
+  "contact.message.placeholder": "Décrivez votre projet, vos besoins, un budget ou un délai éventuel...",
+  "contact.send": "Envoyer"
+}

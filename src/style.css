@@ -347,6 +347,157 @@ body {
   background: rgba(242, 243, 245, 0.12);
 }
 
+/* Formulaire de contact (.link-overlay--form, voir ui/linkOverlay.ts/contactForm.ts) — fond
+   sombre + libellés bilingues (français en principal, anglais en sous-titre), inspiré d'une
+   maquette fournie par l'utilisateur (voir CLAUDE.md racine, page "Contact"). Partage la
+   géométrie du panel "side" (33vw, glissement depuis la droite, voir .link-overlay__panel
+   ci-dessus) mais un contenu entièrement dédié. */
+.link-overlay__panel--form {
+  /* Pas de position: relative ici : .link-overlay__panel (règle de base, déjà appliquée à ce même
+     élément) pose déjà position: absolute + top/right/bottom: 0 — un override en relative ici
+     cassait cet ancrage (panneau parti à gauche, plus étalé sur toute la hauteur). Le
+     ::before ci-dessous se positionne quand même correctement : "absolute" (hérité) établit déjà
+     un contexte de positionnement pour ses enfants absolus, pas besoin de le répéter. */
+  background: #17181c;
+}
+
+/* Grain subtil en surimpression (bruit généré via feTurbulence, pas d'image externe) — évoque la
+   texture "papier/béton" de la maquette sans dépendance à un asset. */
+.link-overlay__panel--form::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.05;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.contact-form__title {
+  position: relative;
+  margin: 0 0 1.5rem;
+  font-size: 2.25rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #f2f3f5;
+}
+
+/* Ligne d'astérisques de la maquette — texte répété plutôt qu'une bordure, tronqué proprement
+   par overflow:hidden (pas besoin de calculer le nombre exact d'astérisques pour la largeur). */
+.contact-form__divider {
+  position: relative;
+  margin: 0 0 2rem;
+  height: 1.2em;
+  overflow: hidden;
+  color: rgba(242, 243, 245, 0.35);
+  font-size: 0.85rem;
+  letter-spacing: 0.15em;
+  white-space: nowrap;
+}
+
+.contact-form__divider::before {
+  content: "**************************************************************************************";
+}
+
+.contact-form {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+.contact-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.contact-form__label {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.contact-form__label-primary {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #f2f3f5;
+}
+
+.contact-form__label-secondary {
+  font-size: 0.75rem;
+  color: rgba(242, 243, 245, 0.45);
+}
+
+.contact-form__input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem 0;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(242, 243, 245, 0.25);
+  color: #f2f3f5;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 1rem;
+  transition: border-color 0.2s ease;
+}
+
+.contact-form__input::placeholder {
+  color: rgba(242, 243, 245, 0.35);
+}
+
+.contact-form__input:focus {
+  outline: none;
+  border-bottom-color: #f2f3f5;
+}
+
+.contact-form__input--textarea {
+  resize: vertical;
+  min-height: 6rem;
+  border: 1px solid rgba(242, 243, 245, 0.25);
+  border-radius: 4px;
+  padding: 0.75rem;
+}
+
+.contact-form__input--textarea:focus {
+  border-bottom-color: rgba(242, 243, 245, 0.25);
+  border-color: #f2f3f5;
+}
+
+.contact-form__submit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.5rem;
+  padding: 1rem 0;
+  background: transparent;
+  border: none;
+  border-top: 1px solid rgba(242, 243, 245, 0.25);
+  color: #f2f3f5;
+  cursor: pointer;
+  text-align: left;
+}
+
+.contact-form__submit .contact-form__label-primary {
+  font-size: 1rem;
+}
+
+.contact-form__submit-arrow {
+  flex-shrink: 0;
+  width: 1.25rem;
+  height: 1.25rem;
+  transition: transform 0.2s ease;
+}
+
+.contact-form__submit:hover .contact-form__submit-arrow,
+.contact-form__submit:focus-visible .contact-form__submit-arrow {
+  transform: translateX(4px);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .link-overlay,
   .link-overlay__panel,
@@ -354,6 +505,11 @@ body {
     /* La dernière règle doit matcher explicitement la spécificité de la règle "page" ci-dessus
        (0,2,0) — sans elle, "none" perdrait face à la transition plus spécifique définie hors
        media query, peu importe l'ordre des règles (la spécificité gagne toujours). */
+    transition: none;
+  }
+
+  .contact-form__submit-arrow,
+  .contact-form__input {
     transition: none;
   }
 }
