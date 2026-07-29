@@ -3,11 +3,18 @@ body {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  /* Même couleur que scene.ts (background/fog) et .loading — peint par le navigateur avant même
-     que le JS ne s'exécute, donc avant que l'overlay de chargement n'existe : si cette couleur
-     diffère, il y a un flash visible (ex. noir) au tout premier paint, avant que quoi que ce
-     soit ne soit géré côté JS. */
-  background: #d9c7a3;
+  /* Police générale du site — voir index.html (chargement Google Fonts + explication du choix).
+     Répétée explicitement sur chaque élément de texte plutôt que de compter sur l'héritage depuis
+     ici (voir chacune des règles plus bas) : les boutons/champs de formulaire n'héritent pas du
+     font-family de leurs ancêtres par défaut dans les navigateurs, il faut le leur redonner un par
+     un — cette déclaration sert surtout de repli pour tout texte qui n'aurait pas la sienne. */
+  font-family: "Quicksand", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Même dégradé que scene.ts (GRADIENT_TOP/GRADIENT_BOTTOM) et .loading plus
+     bas — peint par le navigateur avant même que le JS ne s'exécute, donc avant que l'overlay de
+     chargement n'existe : si ce dégradé diffère, il y a un flash visible au tout premier paint,
+     avant que quoi que ce soit ne soit géré côté JS. CSS pur ne peut pas importer les constantes
+     TypeScript : à resynchroniser à la main si les teintes changent dans scene.ts. */
+  background: linear-gradient(to bottom, #946d35, #dec5a4);
 }
 
 #scene {
@@ -15,6 +22,72 @@ body {
   width: 100vw;
   height: 100vh;
   touch-action: none;
+}
+
+/* Titre/sous-titre bilingues fixes (ui/heroText.ts) — décoratif, jamais interactif :
+   pointer-events: none pour ne pas bloquer le raycaster sur la scène 3D en-dessous, même en cas
+   de chevauchement visuel selon la résolution. z-index sous .loading (30) : reste caché derrière
+   l'écran de chargement, révélé en même temps que la scène. */
+.hero-text {
+  position: fixed;
+  top: 6vh;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  max-width: min(90vw, 42rem);
+  text-align: center;
+  pointer-events: none;
+  color: #2a2620;
+  font-family: "Quicksand", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Voir "Dark mode" plus bas : passe en blanc quand body.dark-mode est posé (lampe allumée). */
+  transition: color 0.4s ease;
+}
+
+.hero-text__title {
+  margin: 0;
+  /* Réduit par rapport à un premier essai (clamp(1.6rem, 4vw, 2.75rem)) jugé trop gros. */
+  font-size: clamp(1.6rem, 3vw, 2.2rem);
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+.hero-text__subtitle {
+  margin: 0.6rem 0 0;
+  font-size: clamp(0.8rem, 1.4vw, 0.95rem);
+  color: rgba(42, 38, 32, 0.75);
+  transition: color 0.4s ease;
+}
+
+/* Copyright fixe en bas de l'écran, centré (ui/footer.ts) — même logique que .hero-text
+   (décoratif, pointer-events: none, passe en blanc en dark mode). */
+.site-footer {
+  position: fixed;
+  bottom: 1.25rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  margin: 0;
+  font-size: 0.75rem;
+  color: rgba(42, 38, 32, 0.6);
+  font-family: "Quicksand", system-ui, -apple-system, "Segoe UI", sans-serif;
+  pointer-events: none;
+  text-align: center;
+  transition: color 0.4s ease;
+}
+
+/* Dark mode : posé sur <body> (main.ts, animate()) en synchro avec la progression de
+   objectAnimations.getLampGlowProgress() — pas un thème persistant/choisi par l'utilisateur,
+   littéralement calé sur l'état de la lampe ("considère le light on comme le dark mode", retour
+   direct de l'utilisateur). Basculé au franchissement de 50% de progression (pas d'interpolation
+   pixel par pixel comme le dégradé de fond, voir scene.ts) — suffisant pour un simple changement
+   de couleur de texte, la transition CSS ci-dessus (0.4s) lisse le reste. */
+body.dark-mode .hero-text,
+body.dark-mode .site-footer {
+  color: #f2f3f5;
+}
+
+body.dark-mode .hero-text__subtitle {
+  color: rgba(242, 243, 245, 0.75);
 }
 
 .sr-nav__button {
@@ -43,7 +116,7 @@ body {
   background: #111;
   color: #fff;
   border-radius: 6px;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: "Quicksand", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 .loading {
@@ -55,11 +128,12 @@ body {
   align-items: center;
   justify-content: center;
   gap: 1rem;
-  /* Même couleur que scene.ts (background/fog) : le fond ne change pas de teinte quand l'overlay
-     se retire, la scène 3D "continue" visuellement le fond plutôt que de trancher dessus. */
-  background: #d9c7a3;
+  /* Même dégradé que scene.ts/html/body (voir plus haut) : le fond ne change pas de teinte
+     quand l'overlay se retire, la scène 3D "continue" visuellement le fond plutôt que de
+     trancher dessus. */
+  background: linear-gradient(to bottom, #946d35, #dec5a4);
   color: #2a2620;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: "Quicksand", system-ui, -apple-system, "Segoe UI", sans-serif;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.25s ease;
@@ -91,29 +165,6 @@ body {
   }
 }
 
-.mobile-blocker {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem;
-  /* Même couleur que scene.ts/.loading (voir style.css racine, html/body) : pas de flash de
-     couleur différente, cohérent avec le reste du site même si la scène 3D ne se charge jamais
-     ici. */
-  background: #d9c7a3;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-}
-
-.mobile-blocker__message {
-  margin: 0;
-  max-width: 28rem;
-  text-align: center;
-  font-size: 1.1rem;
-  color: #2a2620;
-}
-
 .site-menu {
   position: fixed;
   top: 1.5rem;
@@ -122,16 +173,18 @@ body {
      modèle charge. Sous .link-overlay (40) : un gabarit "side"/"page" ouvert reprend la priorité
      visuelle et de clic, cohérent avec le reste de l'app (une seule chose "active" à la fois). */
   z-index: 25;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: "Quicksand", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 /* Effet verre dépoli (glassmorphism) : fond très translucide + blur+saturate marqués (plutôt
    qu'un simple fond gris semi-opaque) pour que les teintes de la scène derrière restent visibles
    et vivantes à travers le bouton/panneau, avec une bordure claire fine + une légère ombre pour
-   détacher l'ensemble du fond de la scène. Partagé avec .sound-toggle (ui/soundToggle.ts) — même
-   traitement visuel pour tout bouton rond fixe au-dessus de la scène, un seul endroit à ajuster. */
+   détacher l'ensemble du fond de la scène. Partagé avec .sound-toggle (ui/soundToggle.ts) et
+   .language-toggle (ui/languageToggle.ts) — même traitement visuel pour tout bouton rond fixe
+   au-dessus de la scène, un seul endroit à ajuster. */
 .site-menu__toggle,
-.sound-toggle {
+.sound-toggle,
+.language-toggle {
   width: 3rem;
   height: 3rem;
   display: flex;
@@ -152,7 +205,9 @@ body {
 .site-menu__toggle:hover,
 .site-menu__toggle:focus-visible,
 .sound-toggle:hover,
-.sound-toggle:focus-visible {
+.sound-toggle:focus-visible,
+.language-toggle:hover,
+.language-toggle:focus-visible {
   background: rgba(20, 21, 26, 0.5);
   border-color: rgba(255, 255, 255, 0.55);
 }
@@ -164,6 +219,32 @@ body {
   /* Même logique de z-index que .site-menu (voir plus bas) : masqué derrière .loading tant que
      le modèle charge, et derrière .link-overlay pendant qu'un gabarit est affiché. */
   z-index: 25;
+}
+
+.language-toggle {
+  position: fixed;
+  top: 1.5rem;
+  /* Juste à droite de .sound-toggle : 1.5rem (son propre offset) + 3rem (sa largeur) + 0.75rem
+     (espacement) — même logique de z-index qu'elle. */
+  left: 5.25rem;
+  z-index: 25;
+  /* Bouton (n'hérite pas de font-family par défaut, voir html/body plus haut) affichant du texte
+     ("FR"/"EN") — seul bouton du site à afficher un vrai libellé, les autres (.sound-toggle,
+     .site-menu__toggle) ne contiennent que des icônes SVG. */
+  font-family: "Quicksand", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+/* Pendant le gabarit link "page" (projects, voir main.ts activateLink()/ui/soundToggle.ts) : pas
+   de "dehors" cliquable sur un panneau plein écran, donc .sound-toggle bascule temporairement en
+   bouton retour (setCloseMode()) plutôt que d'ajouter un bouton fermer dédié — .language-toggle
+   reste utilisable à côté. Les deux doivent alors repasser au-dessus de .link-overlay (40),
+   sinon ils resteraient masqués derrière le panneau comme n'importe quel autre link ouvert. */
+body.page-overlay-active .sound-toggle,
+body.page-overlay-active .language-toggle {
+  z-index: 45;
 }
 
 .site-menu__dot {
@@ -267,7 +348,7 @@ body {
   padding: 3rem 2.5rem;
   background: rgba(20, 21, 26, 0.92);
   color: #f2f3f5;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: "Quicksand", system-ui, -apple-system, "Segoe UI", sans-serif;
   overflow-y: auto;
   transform: translateX(100%);
   transition: transform 0.35s ease;
@@ -301,14 +382,6 @@ body {
   font-weight: 600;
 }
 
-.link-overlay--page .link-overlay__title {
-  max-width: 60ch;
-  margin-left: auto;
-  margin-right: auto;
-  font-size: 2rem;
-  text-align: center;
-}
-
 .link-overlay__body {
   margin: 0;
   font-size: 1rem;
@@ -316,20 +389,180 @@ body {
   color: rgba(242, 243, 245, 0.8);
 }
 
-.link-overlay--page .link-overlay__body {
-  max-width: 60ch;
-  margin-left: auto;
-  margin-right: auto;
-  font-size: 1.1rem;
-  text-align: center;
+/* Gabarit "page" (projects, ui/projectsPage.ts) : fiche image plein cadre à droite / texte à
+   gauche, inspirée d'une maquette fournie (helpers/) — le panel de base a un padding uniforme
+   (.link-overlay--page .link-overlay__panel plus haut) pensé pour un contenu title/body centré ;
+   ici on veut au contraire une image qui touche le bord de l'écran, donc le padding est retiré au
+   niveau du panel et reporté uniquement sur la colonne de texte (.projects-page__content).
+   Sélecteur à trois classes pour gagner en spécificité sur .link-overlay--page .link-overlay__panel
+   (0,2,0) ci-dessus. */
+.link-overlay--page .link-overlay__panel--page {
+  padding: 0;
 }
 
-.link-overlay__close {
+.projects-page {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: stretch;
+}
+
+.projects-page__content {
+  flex: 0 0 42%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1.5rem;
+  padding: 5rem clamp(1.5rem, 4vw, 4rem);
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+.projects-page__image {
+  flex: 1 1 auto;
+  position: relative;
+  overflow: hidden;
+  /* Même teinte que le reste du panneau (.link-overlay--page .link-overlay__panel ci-dessus,
+     demande explicite "mets le noir du carrousel sur la même teinte que le reste") — un premier
+     essai en rgba(0, 0, 0, 0.2) semi-transparent créait une teinte légèrement différente une fois
+     superposée au fond du panneau plutôt que de s'y fondre. */
+  background: rgba(15, 16, 20, 0.98);
+}
+
+/* Carrousel vertical (demande explicite : "on voit l'image avant et après") — toutes les
+   diapositives (une par projet, ui/projectsPage.ts) empilées verticalement dans ce rail, translaté
+   pour centrer la diapositive active dans le viewport (.projects-page__image ci-dessus, qui coupe
+   ce qui dépasse via overflow: hidden). Constantes (54%/3%) dupliquées en TypeScript
+   (SLIDE_HEIGHT_PERCENT/GAP_PERCENT, ui/projectsPage.ts, translateYPercent()) — à resynchroniser à
+   la main si elles changent, même piège que GRADIENT_TOP/GRADIENT_BOTTOM (scene.ts/style.css).
+   Relevées depuis 80%/4% (peek ~6%) pour laisser dépasser nettement plus des vignettes voisines
+   (~20% chacune) — demande explicite, calibré sur une seconde maquette de référence (helpers/). */
+.projects-page__image-track {
   position: absolute;
-  top: 1.5rem;
-  right: 1.5rem;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3%;
+  transition: transform 0.5s ease;
+}
+
+.projects-page__image-slide {
+  flex: 0 0 54%;
+  /* Sans ça, une diapositive débordait de son flex-basis de 54% : un enfant flex a par défaut un
+     min-height "auto" qui se cale sur la taille intrinsèque de son contenu (ici l'image, avant
+     même que object-fit/max-height ne s'appliquent) — avec des captures 1920×1080, cette taille
+     intrinsèque dépassait largement 54% de la hauteur du viewport et forçait la diapositive à
+     grandir, décalant tout le rythme du rail (translateY calculé pour un pitch fixe) au point que
+     les dernières diapositives (ex. Portfolio) sortaient du champ. Bug signalé par l'utilisateur
+     ("il y a un décalage... on ne voit même pas portfolio"), diagnostiqué par calcul plutôt
+     qu'observé en navigateur (pas de test Playwright pour ce genre de changement, voir mémoire
+     projet). */
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  box-sizing: border-box;
+}
+
+.projects-page__image-slide img {
+  max-width: 100%;
+  max-height: 100%;
+  /* object-fit: contain (jamais "cover") — demande explicite : ne jamais rogner l'image, quitte à
+     ne pas remplir toute la hauteur de la diapositive. */
+  object-fit: contain;
+  display: block;
+}
+
+.projects-page__eyebrow {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: rgba(242, 243, 245, 0.5);
+}
+
+.projects-page__title {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 700;
+  line-height: 1.1;
+  color: #f2f3f5;
+}
+
+.projects-page__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.projects-page__label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(242, 243, 245, 0.5);
+}
+
+.projects-page__value {
+  margin: 0;
+  font-size: 1rem;
+  color: #f2f3f5;
+}
+
+.projects-page__description {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: rgba(242, 243, 245, 0.75);
+}
+
+/* Lien "voir le site" (data/projects.ts, project.url) — même style flèche que
+   .contact-form__submit-arrow, absent (display: none, posé en JS) pour un projet sans url (KMCODE). */
+.projects-page__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: fit-content;
+  padding-bottom: 0.2rem;
+  border-bottom: 1px solid rgba(242, 243, 245, 0.4);
+  color: #f2f3f5;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: border-color 0.2s ease;
+}
+
+.projects-page__link:hover,
+.projects-page__link:focus-visible {
+  border-color: #f2f3f5;
+}
+
+.projects-page__link-arrow {
+  width: 1rem;
+  height: 1rem;
+  transition: transform 0.2s ease;
+}
+
+.projects-page__link:hover .projects-page__link-arrow,
+.projects-page__link:focus-visible .projects-page__link-arrow {
+  transform: translateX(3px);
+}
+
+.projects-page__nav {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.projects-page__nav-button {
   width: 2.5rem;
   height: 2.5rem;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -337,22 +570,50 @@ body {
   border-radius: 50%;
   background: transparent;
   color: #f2f3f5;
-  font-size: 1.5rem;
+  font-size: 1.25rem;
   line-height: 1;
   cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
-.link-overlay__close:hover,
-.link-overlay__close:focus-visible {
+.projects-page__nav-button:hover,
+.projects-page__nav-button:focus-visible {
   background: rgba(242, 243, 245, 0.12);
+  border-color: rgba(242, 243, 245, 0.5);
 }
 
-/* Formulaire de contact (.link-overlay--form, voir ui/linkOverlay.ts/contactForm.ts) — fond
-   sombre + libellés bilingues (français en principal, anglais en sous-titre), inspiré d'une
-   maquette fournie par l'utilisateur (voir CLAUDE.md racine, page "Contact"). Partage la
-   géométrie du panel "side" (33vw, glissement depuis la droite, voir .link-overlay__panel
-   ci-dessus) mais un contenu entièrement dédié. */
-.link-overlay__panel--form {
+.projects-page__counter {
+  min-width: 3.5ch;
+  text-align: center;
+  font-size: 0.85rem;
+  color: rgba(242, 243, 245, 0.6);
+}
+
+@media (max-width: 720px) {
+  .projects-page {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .projects-page__content {
+    flex: 0 0 auto;
+    padding: 2rem 1.5rem 2.5rem;
+  }
+
+  .projects-page__image {
+    flex: 0 0 38vh;
+    order: -1;
+  }
+}
+
+/* Style "panneau sombre" partagé par .link-overlay--form (contact) et .link-overlay--about — fond
+   sombre + grain texturé, inspiré d'une maquette fournie par l'utilisateur pour la page Contact
+   (voir CLAUDE.md racine, "Page Contact"/"Page À propos"), réutilisé tel quel pour "about" sur
+   demande explicite ("dans le même style que la page Contact"). Partage la géométrie du panel
+   "side" (33vw, glissement depuis la droite, voir .link-overlay__panel ci-dessus) mais un contenu
+   entièrement dédié à chacun (contactForm.ts / aboutPage.ts) — jamais partagé entre les deux
+   (voir commentaire sur createBaseOverlay(), ui/linkOverlay.ts). */
+.link-overlay__panel--dark {
   /* Pas de position: relative ici : .link-overlay__panel (règle de base, déjà appliquée à ce même
      élément) pose déjà position: absolute + top/right/bottom: 0 — un override en relative ici
      cassait cet ancrage (panneau parti à gauche, plus étalé sur toute la hauteur). Le
@@ -363,7 +624,7 @@ body {
 
 /* Grain subtil en surimpression (bruit généré via feTurbulence, pas d'image externe) — évoque la
    texture "papier/béton" de la maquette sans dépendance à un asset. */
-.link-overlay__panel--form::before {
+.link-overlay__panel--dark::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -372,11 +633,15 @@ body {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-.contact-form__title {
+/* Titre + ligne d'astérisques — construits dans ui/linkOverlay.ts (pas dans contactForm.ts/
+   aboutPage.ts, qui ne construisent que le contenu en dessous), partagés par "form"/"about". */
+.dark-panel__title {
   position: relative;
   margin: 0 0 1.5rem;
   font-size: 2.25rem;
-  font-weight: 800;
+  /* 700 (pas 800) : Quicksand ne va pas plus loin — un poids plus élevé forcerait le navigateur à
+     re-graisser artificiellement la police (font-synthesis), rendu incohérent selon le navigateur. */
+  font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: uppercase;
   color: #f2f3f5;
@@ -384,7 +649,7 @@ body {
 
 /* Ligne d'astérisques de la maquette — texte répété plutôt qu'une bordure, tronqué proprement
    par overflow:hidden (pas besoin de calculer le nombre exact d'astérisques pour la largeur). */
-.contact-form__divider {
+.dark-panel__divider {
   position: relative;
   margin: 0 0 2rem;
   height: 1.2em;
@@ -395,7 +660,7 @@ body {
   white-space: nowrap;
 }
 
-.contact-form__divider::before {
+.dark-panel__divider::before {
   content: "**************************************************************************************";
 }
 
@@ -413,23 +678,12 @@ body {
 }
 
 .contact-form__label {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.contact-form__label-primary {
+  display: block;
   font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #f2f3f5;
-}
-
-.contact-form__label-secondary {
-  font-size: 0.75rem;
-  color: rgba(242, 243, 245, 0.45);
 }
 
 .contact-form__input {
@@ -440,7 +694,7 @@ body {
   border: none;
   border-bottom: 1px solid rgba(242, 243, 245, 0.25);
   color: #f2f3f5;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: "Quicksand", system-ui, -apple-system, "Segoe UI", sans-serif;
   font-size: 1rem;
   transition: border-color 0.2s ease;
 }
@@ -482,7 +736,7 @@ body {
   text-align: left;
 }
 
-.contact-form__submit .contact-form__label-primary {
+.contact-form__submit .contact-form__label {
   font-size: 1rem;
 }
 
@@ -498,6 +752,49 @@ body {
   transform: translateX(4px);
 }
 
+/* Page "À propos" (.link-overlay--about, voir ui/linkOverlay.ts/aboutPage.ts) — même panneau
+   sombre/texturé + titre que la page Contact (.link-overlay__panel--dark/.dark-panel__title ci-
+   dessus), contenu propre en dessous : portrait, identité (nom + âge calculé dynamiquement), bio,
+   compétences. */
+.about-page {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.about-page__photo {
+  width: 100%;
+  max-height: 260px;
+  object-fit: cover;
+  border-radius: 8px;
+  display: block;
+}
+
+.about-page__identity {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #f2f3f5;
+}
+
+.about-page__label {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #f2f3f5;
+}
+
+.about-page__text {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: rgba(242, 243, 245, 0.8);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .link-overlay,
   .link-overlay__panel,
@@ -510,6 +807,11 @@ body {
 
   .contact-form__submit-arrow,
   .contact-form__input {
+    transition: none;
+  }
+
+  .projects-page__image-track,
+  .projects-page__link-arrow {
     transition: none;
   }
 }

@@ -1,6 +1,6 @@
 import "./style.css";
-import { AudioListener, Box3, Vector3, type AnimationClip, type Object3D } from "three";
-import { createScene, createEnvironmentMap } from "./scene";
+import { Vector3, type AnimationClip, type Object3D } from "three";
+import { createScene, setBackgroundDarkness, applyEnvironmentLighting, setEnvironmentIntensity } from "./scene";
 import { createCamera, handleCameraResize } from "./camera";
 import { createRenderer, handleRendererResize } from "./renderer";
 import { createLighting } from "./lighting";
@@ -12,19 +12,19 @@ import { createCameraRig } from "./interactions/cameraRig";
 import { createParallaxRig } from "./interactions/parallax";
 import { createObjectAnimations } from "./interactions/objectAnimations";
 import { prepareSceneEntrance, playSceneEntrance } from "./interactions/sceneEntrance";
-import { createSoundEffects } from "./audio/soundEffects";
+import { createSoundController } from "./audio/soundController";
 import { createAccessibleNav } from "./ui/accessibleNav";
 import { createLoadingUi } from "./ui/loading";
+import { createHeroText } from "./ui/heroText";
+import { createFooter } from "./ui/footer";
 import { createLinkOverlay } from "./ui/linkOverlay";
 import { createSiteMenu } from "./ui/siteMenu";
-import { createSoundToggle } from "./ui/soundToggle";
-import { showMobileBlocker } from "./ui/mobileBlocker";
+import { createLanguageToggle } from "./ui/languageToggle";
 import { computeAutoFocus } from "./objects/autoFocus";
 import { findClipForObject, configureKtx2Support } from "./objects/loader";
+import { installScaffoldBridge } from "./objects/scaffoldBridge";
 import { sceneConfig, type FocusEntry } from "./data/scenes";
 import { linkTemplates } from "./data/links";
-import { soundFiles, exclusiveSoundIds } from "./data/sounds";
-import { isLowPowerDevice } from "./deviceCapabilities";
 
 // Fraction de remplissage bien plus élevée que le zoom standard (0.75, voir autoFocus.ts) pour
 // le gabarit "page" de link : effet recherché "on rentre dans l'objet", pas juste "on regarde
@@ -32,17 +32,7 @@ import { isLowPowerDevice } from "./deviceCapabilities";
 // de Mac — à revoir si un futur link="page" porte sur un objet beaucoup plus petit.
 const LINK_PAGE_ZOOM_FILL_FRACTION = 3.5;
 
-// Toute l'expérience 3D (chargement du modèle ~58 Mo, ombres, bloom, boucle de rendu) est
-// réservée au desktop pour l'instant — voir CLAUDE.md racine, "Crash mobile" : les mitigations
-// (pixel ratio réduit, ombres/bloom coupés) n'ont pas suffi à garantir la stabilité sur tous les
-// appareils tactiles, retour à une page de blocage simple plutôt que de continuer à ajuster au
-// cas par cas. `startApp()` n'est jamais appelée sur mobile — aucun `.glb` n'est chargé, aucun
-// contexte WebGL créé.
-if (isLowPowerDevice) {
-  showMobileBlocker();
-} else {
-  startApp();
-}
+startApp();
 
 function startApp(): void {
   const canvas = document.querySelector<HTMLCanvasElement>("#scene")!;
@@ -50,43 +40,39 @@ function startApp(): void {
   const scene = createScene();
   const camera = createCamera();
   const renderer = createRenderer(canvas);
+  applyEnvironmentLighting(renderer, scene);
   configureKtx2Support(renderer);
-  const environmentMap = createEnvironmentMap(renderer);
   const composer = createPostprocessing(renderer, scene, camera);
   const cameraRig = createCameraRig(camera);
   const parallaxRig = createParallaxRig(camera, canvas);
   const objectAnimations = createObjectAnimations();
   const loadingUi = createLoadingUi();
-  // closeActive référencée avant sa déclaration textuelle plus bas : `function` est hoisté, donc
-  // déjà disponible ici (l'appel ne se fait qu'au clic sur le bouton fermer, pas à la création).
-  const linkOverlay = createLinkOverlay(() => closeActive());
+  createHeroText();
+  createFooter();
+  const linkOverlay = createLinkOverlay();
 
-  const { group: lightingGroup } = createLighting();
+  const { group: lightingGroup, diffuse } = createLighting();
   scene.add(lightingGroup);
+  // "lamp_toggle" (Lamp) assombrit l'ambiance générale quand la lampe s'allume, pour donner
+  // l'impression que la pièce n'est plus éclairée que par elle — objectAnimations.ts ne connaît
+  // pas lighting.ts, donc c'est ici, dans main.ts, que la coordination se fait. La valeur de base
+  // est capturée une fois (avant toute bascule) pour toujours revenir exactement dessus, jamais
+  // une valeur qui dériverait d'un calcul répété. Descend jusqu'à 25% de l'intensité de base —
+  // pas 0%, pour ne jamais perdre complètement le fill sur les faces opposées à la lampe.
+  const DIFFUSE_BASE_INTENSITY = diffuse.intensity;
+  const LAMP_AMBIENT_DIM_FACTOR = 0.75;
+  // Dernière valeur appliquée au dégradé de fond (scene.ts) — un CanvasTexture redessiné à
+  // chaque frame indéfiniment serait un coût GPU inutile ; ne redessiner que lorsque la
+  // progression a réellement changé (voir animate() plus bas), même principe que
+  // renderer.shadowMap.needsUpdate à la demande.
+  let lastLampProgress = 0;
 
-  // Sons ponctuels (voir audio/soundEffects.ts) : listener attaché à la caméra, nécessaire pour
-  // que THREE.PositionalAudio calcule un volume/panning selon la distance à la caméra active.
-  const soundListener = new AudioListener();
-  camera.add(soundListener);
-  const soundEffects = createSoundEffects(soundFiles, exclusiveSoundIds, soundListener);
-  // Son activé par défaut — les politiques d'autoplay des navigateurs bloquent de toute façon
-  // tout son tant qu'aucun geste utilisateur n'a eu lieu (voir unlockAudioContext() plus bas),
-  // donc rien ne joue avant la première interaction quel que soit cet état initial. Pas besoin de
-  // garder la référence retournée : rien d'autre dans main.ts n'a besoin de lire/fermer ce bouton
-  // (contrairement à siteMenu, fermé aussi depuis le handler Échap plus bas).
-  createSoundToggle(false, (muted) => soundEffects.setMuted(muted));
-
-  // Débloque l'AudioContext partagé (politique d'autoplay des navigateurs : suspendu tant
-  // qu'aucun geste utilisateur n'a eu lieu) dès le tout premier clic/touche, où qu'il ait lieu sur
-  // la page — pas seulement sur un objet "sound", pour être prêt dès le premier son réellement
-  // déclenché plus tard.
-  function unlockAudioContext() {
-    if (soundListener.context.state === "suspended") void soundListener.context.resume();
-    window.removeEventListener("pointerdown", unlockAudioContext);
-    window.removeEventListener("keydown", unlockAudioContext);
-  }
-  window.addEventListener("pointerdown", unlockAudioContext);
-  window.addEventListener("keydown", unlockAudioContext);
+  // Regroupe AudioListener/chargement des sons/bouton mute/déblocage de l'AudioContext — voir
+  // audio/soundController.ts. Pas besoin de garder la référence du bouton créé à l'intérieur :
+  // rien d'autre dans main.ts n'a besoin de le lire/fermer (contrairement à siteMenu, fermé aussi
+  // depuis le handler Échap plus bas).
+  const { playSoundIfAny, stopSoundIfAny, soundToggle } = createSoundController(camera);
+  createLanguageToggle();
 
   const defaultCameraPosition = new Vector3(...sceneConfig.defaultCamera.position);
   const defaultCameraTarget = new Vector3(...sceneConfig.defaultCamera.target);
@@ -119,28 +105,20 @@ function startApp(): void {
     if (clip) objectAnimations.setClipActive(object, clip, active);
   }
 
-  // "sound" (Custom Property Blender, String, ex. "grass") — indépendante d'animationType, mais
-  // sa lecture est pilotée par ce que rapporte objectAnimations.trigger() (voir TriggerOutcome) :
-  // ne joue que si un cycle a réellement démarré cette fois (pas à chaque clic/survol si
-  // l'animation était déjà en cours et donc bloquée — corrigé après un bug où enchaîner des clics
-  // rejouait le son à chaque fois alors que l'animation, elle, ne se relançait pas).
+  // "sound" (Custom Property Blender, String, ex. "grass") — lecture pilotée par ce que rapporte
+  // objectAnimations.trigger() (voir TriggerOutcome) via playSoundIfAny/stopSoundIfAny
+  // (audio/soundController.ts) : ne joue que si un cycle a réellement démarré cette fois (pas à
+  // chaque clic/survol si l'animation était déjà en cours et donc bloquée — corrigé après un bug
+  // où enchaîner des clics rejouait le son à chaque fois alors que l'animation, elle, ne se
+  // relançait pas).
   //
   // `loop` : un son couplé à une animation "loop" ou à un zoom doit lui-même boucler — sinon un
   // one-shot plus court que l'animation finit de jouer bien avant que l'utilisateur ne quitte
   // cet état, laissant l'animation continuer en silence (confusion vécue : ça ressemble à un
   // bug, l'utilisateur reclique en espérant relancer le son, ce qui arrête en fait toute la
-  // boucle). L'arrêt réel (boucle ou zoom) ne se fait plus ici mais via
+  // boucle). L'arrêt réel (boucle ou zoom) ne se fait plus au moment du déclenchement mais via
   // objectAnimations.onOneShotEnd() (voir plus bas) ou closeActive() pour le zoom — un seul
-  // endroit par type d'état, jamais dupliqué au moment du déclenchement.
-  function playSoundIfAny(object: Object3D | null | undefined, loop: boolean) {
-    const soundId = object?.userData.sound as string | undefined;
-    if (soundId) soundEffects.play(object!, soundId, loop);
-  }
-
-  function stopSoundIfAny(object: Object3D | null | undefined) {
-    const soundId = object?.userData.sound as string | undefined;
-    if (soundId) soundEffects.stop(object!, soundId);
-  }
+  // endroit par type d'état, jamais dupliqué.
 
   // Coupe le son d'un objet exactement au moment où son cycle one-shot se termine POUR DE BON
   // (pas une simple relance de boucle) — couvre à la fois un one-shot classique qui durerait plus
@@ -185,6 +163,11 @@ function startApp(): void {
     // caméra ne commence à dézoomer, pour ne pas voir le contenu plein écran pendant le tween.
     // No-op si aucun overlay n'est ouvert (ex. simple animationType="zoom" sans link).
     linkOverlay.close();
+    // Pendant du activateLink() ci-dessous (branche "page") — no-op si on n'était pas dans ce mode
+    // (ex. simple animationType="zoom" sans link), setCloseMode(false) resitue juste l'état
+    // mute/unmute normal du bouton, sans effet s'il l'était déjà.
+    document.body.classList.remove("page-overlay-active");
+    soundToggle.setCloseMode(false);
     cameraRig.reset(sceneConfig.defaultCamera, () => {
       isAnimating = false;
       activeId = null;
@@ -204,11 +187,11 @@ function startApp(): void {
       return true;
     }
 
-    // "side"/"form" : pas de caméra impliquée, ouverture immédiate — seul "page" (ci-dessous) a
-    // besoin d'un zoom préalable. "form" (contact) suit exactement la même règle que "side" ici :
-    // seule sa géométrie/contenu diffère (voir ui/linkOverlay.ts), pas sa coordination avec
-    // activeId/isAnimating.
-    if (template.type === "side" || template.type === "form") {
+    // "side"/"form"/"about" : pas de caméra impliquée, ouverture immédiate — seul "page"
+    // (ci-dessous) a besoin d'un zoom préalable. "form" (contact) et "about" suivent exactement la
+    // même règle que "side" ici : seuls leur géométrie/contenu diffèrent (voir ui/linkOverlay.ts),
+    // pas leur coordination avec activeId/isAnimating.
+    if (template.type === "side" || template.type === "form" || template.type === "about") {
       setHovered(null);
       linkOverlay.open(template);
       return true;
@@ -237,6 +220,13 @@ function startApp(): void {
     cameraRig.focus(focus, () => {
       isAnimating = false;
       linkOverlay.open(template);
+      // "page" n'a pas de "dehors" cliquable pour fermer (panneau plein écran) — plutôt qu'un
+      // bouton fermer dédié en plus, le bouton son (coin haut-gauche) devient temporairement un
+      // bouton retour (ui/soundToggle.ts) ; hissé au-dessus de .link-overlay (z-index, style.css)
+      // avec .language-toggle à côté, sinon les deux resteraient masqués derrière le panneau plein
+      // écran comme n'importe quel autre link ouvert (voir ui/CLAUDE.md).
+      document.body.classList.add("page-overlay-active");
+      soundToggle.setCloseMode(true, () => closeActive());
     });
     return true;
   }
@@ -316,7 +306,7 @@ function startApp(): void {
   const siteMenu = createSiteMenu(
     [
       { id: "projects", label: "Projets" },
-      { id: "hobbies", label: "Loisirs" },
+      { id: "about", label: "À propos" },
       { id: "contact", label: "Contact" },
     ],
     selectMenuEntry
@@ -325,7 +315,7 @@ function startApp(): void {
   async function init(): Promise<void> {
     loadingUi.show();
 
-    const { group, model, interactiveObjects: allInteractiveObjects, animations } = await buildOfficeScene(environmentMap);
+    const { group, model, interactiveObjects: allInteractiveObjects, animations } = await buildOfficeScene();
     scene.add(group);
     currentAllInteractiveObjects = allInteractiveObjects;
 
@@ -397,8 +387,8 @@ function startApp(): void {
     // (bug vécu et confirmé via trace WebGL : gl.texSubImage2D() se déclenchait au fil de la chute).
     composer.render();
 
-    // Positionne déjà tout hors-champ (murs glissés, sol descendu, items élevés) ici, pendant que
-    // l'écran de chargement masque encore tout — playSceneEntrance() plus bas ne fera plus que
+    // Positionne déjà tout hors-champ (chaque objet élevé au-dessus de sa position de repos) ici,
+    // pendant que l'écran de chargement masque encore tout — playSceneEntrance() plus bas ne fera plus que
     // démarrer l'horloge du tween, rien de plus, pile au moment de la révélation. Volontairement
     // après resolveEntries() ET composer.render() ci-dessus (voir leurs commentaires).
     const sceneEntrancePlan = prepareSceneEntrance(model);
@@ -414,35 +404,8 @@ function startApp(): void {
     });
   }
 
-  // Pont dev-only pour scripts/scaffold-scenes.mjs (voir objects/CLAUDE.md) : liste tous les
-  // objets interactifs (userData.animation===true et/ou userData.link) — permet au script de
-  // détecter les noms dupliqués et si le focus vient d'une surcharge ou de l'auto.
-  if (import.meta.env.DEV) {
-    interface ScaffoldObjectInfo {
-      name: string;
-      animationType: string | null;
-      animationTrigger: string | null;
-      link: string | null;
-      center: [number, number, number];
-      size: [number, number, number];
-    }
-    (window as unknown as { __kmcode_scaffold__: { listInteractiveObjects: () => ScaffoldObjectInfo[] } }).__kmcode_scaffold__ = {
-      listInteractiveObjects: () =>
-        currentAllInteractiveObjects.map((object) => {
-          const box = new Box3().setFromObject(object);
-          const center = box.getCenter(new Vector3());
-          const size = box.getSize(new Vector3());
-          return {
-            name: object.name,
-            animationType: (object.userData.animationType as string | undefined) ?? null,
-            animationTrigger: (object.userData.animationTrigger as string | undefined) ?? null,
-            link: (object.userData.link as string | undefined) ?? null,
-            center: center.toArray() as [number, number, number],
-            size: size.toArray() as [number, number, number],
-          };
-        }),
-    };
-  }
+  // Pont dev-only pour scripts/scaffold-scenes.mjs (voir objects/scaffoldBridge.ts/CLAUDE.md).
+  if (import.meta.env.DEV) installScaffoldBridge(() => currentAllInteractiveObjects);
 
   window.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
@@ -463,11 +426,35 @@ function startApp(): void {
     // renderer.shadowMap.autoUpdate = false en permanence (renderer.ts) — ne marquer la shadow
     // map "dirty" que les frames où de la géométrie a réellement bougé (objectAnimations.update()
     // renvoie ce constat, voir CLAUDE.md racine) évite de recalculer une shadow map 2048×2048 à
-    // chaque frame alors que la scène est immobile la quasi-totalité du temps. `||=` plutôt qu'une
-    // affectation directe : ne jamais écraser un `true` déjà posé ailleurs la même frame (ex. le
-    // recalcul final forcé dans playSceneEntrance()'s onComplete, plus haut) — Three.js remet
-    // lui-même needsUpdate à false une fois la shadow map effectivement recalculée, jamais nous.
+    // chaque frame alors que la scène est immobile la quasi-totalité du temps. Affectations en
+    // "if" plutôt que directes : ne jamais écraser un `true` déjà posé ailleurs la même frame —
+    // Three.js remet lui-même needsUpdate à false une fois la shadow map effectivement
+    // recalculée, jamais nous.
     if (objectAnimations.update()) renderer.shadowMap.needsUpdate = true;
+    // Pendant l'animation d'arrivée (sceneEntranceActive), les objets tombent via leur propre
+    // tween (sceneEntrance.ts) — objectAnimations.update() n'en sait rien, donc son constat
+    // ci-dessus ne suffit pas ici. Recalculée à chaque frame le temps de la chute plutôt qu'une
+    // seule fois à la fin (onComplete de playSceneEntrance(), voir plus bas) — sans ça, les
+    // ombres restaient figées jusqu'à ce que les objets soient posés, au lieu de les suivre.
+    // Réévalué possible avec le nouveau modèle (office_lite.glb, 11 objets) : le précédent
+    // modèle (~24 objets) avait justement motivé le calcul unique en fin d'animation pour éviter
+    // un saccadé, un compromis qui ne s'impose plus avec un jeu d'objets bien plus léger.
+    if (sceneEntranceActive) renderer.shadowMap.needsUpdate = true;
+    // Assombrit la diffuse et le dégradé de fond en synchro avec le fondu de la lampe (même
+    // valeur de progression que celle qui pilote l'émissif de l'ampoule, voir
+    // objectAnimations.ts/lamp_toggle) — pas besoin d'un second fondu séparé ici.
+    const lampProgress = objectAnimations.getLampGlowProgress();
+    diffuse.intensity = DIFFUSE_BASE_INTENSITY * (1 - LAMP_AMBIENT_DIM_FACTOR * lampProgress);
+    setEnvironmentIntensity(scene, lampProgress);
+    if (lampProgress !== lastLampProgress) {
+      setBackgroundDarkness(lampProgress);
+      // "Dark mode" = état de la lampe, pas un thème choisi/persistant (retour direct de
+      // l'utilisateur : "considère le light on comme le dark mode") — bascule au franchissement
+      // de 50%, la transition CSS sur .hero-text/.site-footer (style.css) lisse le changement de
+      // couleur de texte, pas besoin d'interpoler pixel par pixel comme le dégradé de fond.
+      document.body.classList.toggle("dark-mode", lampProgress >= 0.5);
+      lastLampProgress = lampProgress;
+    }
     composer.render();
   }
 

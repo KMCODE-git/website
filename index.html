@@ -4,6 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>KMCODE</title>
+    <!-- Police générale du site (style.css, "Quicksand" en tête de chaque font-family) — choisie
+         pour se rapprocher de la police fine/arrondie de la maquette de référence (helpers/, non
+         versionnée). Chargée via Google Fonts (preconnect pour limiter le coût de la première
+         requête) plutôt que self-hostée : seule dépendance réseau externe du site avec les polices
+         système en repli si elle échoue à charger. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body>
     <canvas id="scene"></canvas>

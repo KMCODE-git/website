@@ -1,4 +1,4 @@
-import { translate } from "../i18n/translate";
+import { translate, onLanguageChange } from "../i18n/translate";
 
 // Adresse de destination du mailto: — pas de backend/service tiers (Formspree, fonction Vercel...)
 // pour l'instant, décision explicite ("mailto c'est ok") : reste un site 100% statique, cohérent
@@ -21,20 +21,16 @@ const FIELDS: FieldConfig[] = [
   { key: "contact.phone", name: "phone", type: "tel", required: false, autocomplete: "tel" },
 ];
 
-// Libellé bilingue "simultané" (voir i18n/translate.ts) : primaire (français) en gras, secondaire
-// (anglais) en sous-titre — même motif visuel que la maquette de référence (voir CLAUDE.md
-// racine, page "Contact").
+// Une seule langue affichée à la fois (voir ui/languageToggle.ts) — se retraduit lui-même via
+// onLanguageChange() plutôt que de reconstruire le champ à chaque bascule.
 function createLabel(key: string): HTMLSpanElement {
-  const { primary, secondary } = translate(key);
   const label = document.createElement("span");
   label.className = "contact-form__label";
-  const primaryEl = document.createElement("span");
-  primaryEl.className = "contact-form__label-primary";
-  primaryEl.textContent = primary;
-  const secondaryEl = document.createElement("span");
-  secondaryEl.className = "contact-form__label-secondary";
-  secondaryEl.textContent = secondary;
-  label.append(primaryEl, secondaryEl);
+  const render = () => {
+    label.textContent = translate(key);
+  };
+  render();
+  onLanguageChange(render);
   return label;
 }
 
@@ -75,7 +71,11 @@ export function createContactForm(): HTMLFormElement {
   textarea.required = true;
   textarea.rows = 5;
   textarea.className = "contact-form__input contact-form__input--textarea";
-  textarea.placeholder = translate("contact.message.placeholder").primary;
+  const renderPlaceholder = () => {
+    textarea.placeholder = translate("contact.message.placeholder");
+  };
+  renderPlaceholder();
+  onLanguageChange(renderPlaceholder);
   messageWrapper.append(textarea);
   form.append(messageWrapper);
   inputs.message = textarea;

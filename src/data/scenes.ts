@@ -31,10 +31,20 @@ export interface SceneConfig {
 // configuration, pas de tableau/id/label.
 export const sceneConfig: SceneConfig = {
   defaultCamera: {
-    // Vue de 3/4, à 45° vers la droite plutôt que de face (même distance à la cible).
-    // position.y légèrement relevé (2 -> 2.35, ~5° de plus) pour voir un peu plus d'en haut.
-    position: [2.5, 2.35, 2.5],
-    target: [0, 0.9, 0],
+    // Vue de face, proche du bureau — inclinaison réduite par rapport à un premier essai (ratio
+    // hauteur/distance plus faible) et target.x décalé pour recentrer sur le bureau (le setup
+    // n'est pas centré sur x=0 dans le modèle, voir objects/scenes/office.ts : Desk/Chair/Plant
+    // sont tous à x positif).
+    //
+    // position.x décalé (0 -> 0.28) : PAS un bug de parallax.ts (son calcul offset=0 au centre de
+    // l'écran est correct) — cette pose de repos elle-même n'était pas encore assez recentrée sur
+    // le bureau, et il fallait donc déplacer la souris tout à gauche de l'écran pour que la
+    // parallaxe (interactions/parallax.ts, offsetX = -pointerX * MAX_OFFSET_X) compense l'écart et
+    // affiche enfin le bon cadrage. Ce décalage reproduit exactement l'offset que produirait la
+    // parallaxe à pointerX=-1 (le long de baseRight, ≈ +X ici) — bake dans la pose de repos plutôt
+    // que de devoir déplacer la souris pour l'obtenir.
+    position: [0.28, 2.8, 3.6],
+    target: [0.35, 0.7, 0],
   },
   entries: {
     // Les clés ci-dessous doivent correspondre au nom Blender de l'objet (object.name — voir

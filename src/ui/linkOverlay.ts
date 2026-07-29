@@ -1,6 +1,8 @@
 import type { LinkTemplate } from "../data/links";
 import { createContactForm } from "./contactForm";
-import { translate } from "../i18n/translate";
+import { createAboutPage } from "./aboutPage";
+import { createProjectsPage } from "./projectsPage";
+import { translate, onLanguageChange } from "../i18n/translate";
 
 export interface LinkOverlay {
   open: (template: LinkTemplate) => void;
@@ -21,8 +23,8 @@ interface SubOverlay {
 // reflow forcé avant réouverture n'a pas suffi à le corriger. Deux éléments distincts, jamais
 // réutilisés entre gabarits, éliminent la classe de bug entièrement — chacun a son propre état
 // "fermé" constant, sa transition ne dépend jamais de ce qui a été ouvert avant. "form" (contact)
-// suit la même règle : structure DOM différente (formulaire, pas un simple title/body), jamais
-// partagée avec "side" (utilisé par hobbies).
+// et "about" suivent la même règle : structure DOM dédiée, jamais partagée entre elles ni avec
+// "side".
 function createBaseOverlay(typeClass: string): SubOverlay {
   const backdrop = document.createElement("div");
   backdrop.className = `link-overlay ${typeClass}`;
@@ -48,15 +50,19 @@ function hideSubOverlay(overlay: SubOverlay): void {
 
 // - "side" : bandeau à droite occupant 1/3 de l'écran ; le fond flouté reste visible tout autour
 //   et se ferme au clic dessus (même convention que la sortie de zoom, CLAUDE.md racine).
-// - "form" (contact) : même comportement de fermeture que "side" (clic sur le fond ou Échap, pas
-//   de caméra impliquée) mais un contenu entièrement dédié (formulaire, voir contactForm.ts) —
-//   jamais rendu dans le panel "side" générique, voir commentaire sur createBaseOverlay().
+// - "form" (contact) / "about" : même géométrie et comportement de fermeture que "side" (clic sur
+//   le fond ou Échap, pas de caméra impliquée) mais un contenu entièrement dédié (formulaire pour
+//   "form", voir contactForm.ts ; portrait/bio/compétences pour "about", voir aboutPage.ts) —
+//   jamais rendu dans le panel "side" générique, voir commentaire sur createBaseOverlay(). Les deux
+//   partagent le même style visuel sombre/texturé (`.link-overlay__panel--dark`, `style.css`) et
+//   le même titre/ligne d'astérisques (`.dark-panel__title`/`.dark-panel__divider`), construits ici
+//   plutôt que dans leurs modules de contenu respectifs — seul le texte du titre diffère.
 // - "page" : panneau plein écran (posé après un zoom caméra préalable dans l'objet, voir
-//   main.ts/openLink()) — pas de "dehors" à cliquer pour fermer, d'où le bouton fermer dédié.
-//   Son clic appelle `onCloseRequest` (fourni par main.ts = `closeActive()`) plutôt que fermer en
-//   local : "page" implique un zoom caméra actif (activeId côté main.ts) qu'il faut aussi
-//   réinitialiser, ce que fermer l'overlay seul ignore complètement.
-export function createLinkOverlay(onCloseRequest: () => void): LinkOverlay {
+//   main.ts/openLink()) — pas de "dehors" à cliquer pour fermer. Pas de bouton fermer dédié dans
+//   ce module : main.ts (activateLink()) bascule le bouton son (ui/soundToggle.ts) en mode
+//   "retour" pendant que ce gabarit est ouvert, voir CLAUDE.md racine "Page Projets" — ce module
+//   ne gère que l'ouverture/fermeture locale de l'overlay (close()), jamais le dézoom caméra.
+export function createLinkOverlay(): LinkOverlay {
   let open = false;
   let activeOverlay: SubOverlay | null = null;
 
@@ -78,41 +84,53 @@ export function createLinkOverlay(onCloseRequest: () => void): LinkOverlay {
   });
 
   const form = createBaseOverlay("link-overlay--form");
-  form.panel.classList.add("link-overlay__panel--form");
+  form.panel.classList.add("link-overlay__panel--dark");
   const formTitle = document.createElement("h2");
-  formTitle.className = "contact-form__title";
-  formTitle.textContent = translate("contact.title").primary;
+  formTitle.className = "dark-panel__title";
+  const renderFormTitle = () => {
+    formTitle.textContent = translate("contact.title");
+  };
+  renderFormTitle();
+  onLanguageChange(renderFormTitle);
   const formDivider = document.createElement("div");
-  formDivider.className = "contact-form__divider";
+  formDivider.className = "dark-panel__divider";
   formDivider.setAttribute("aria-hidden", "true");
   form.panel.append(formTitle, formDivider, createContactForm());
   form.backdrop.addEventListener("click", (event) => {
     if (event.target === form.backdrop) close();
   });
 
+  const about = createBaseOverlay("link-overlay--about");
+  about.panel.classList.add("link-overlay__panel--dark");
+  const aboutTitle = document.createElement("h2");
+  aboutTitle.className = "dark-panel__title";
+  const renderAboutTitle = () => {
+    aboutTitle.textContent = translate("about.title");
+  };
+  renderAboutTitle();
+  onLanguageChange(renderAboutTitle);
+  const aboutDivider = document.createElement("div");
+  aboutDivider.className = "dark-panel__divider";
+  aboutDivider.setAttribute("aria-hidden", "true");
+  about.panel.append(aboutTitle, aboutDivider, createAboutPage());
+  about.backdrop.addEventListener("click", (event) => {
+    if (event.target === about.backdrop) close();
+  });
+
   const page = createBaseOverlay("link-overlay--page");
-  const pageTitle = document.createElement("h2");
-  pageTitle.className = "link-overlay__title";
-  const pageBody = document.createElement("p");
-  pageBody.className = "link-overlay__body";
-  page.panel.append(pageTitle, pageBody);
-  const closeButton = document.createElement("button");
-  closeButton.type = "button";
-  closeButton.className = "link-overlay__close";
-  closeButton.setAttribute("aria-label", "Fermer");
-  closeButton.textContent = "×";
-  closeButton.addEventListener("click", () => onCloseRequest());
-  page.panel.prepend(closeButton);
+  page.panel.classList.add("link-overlay__panel--page");
+  const projectsPage = createProjectsPage();
+  page.panel.append(projectsPage.element);
 
   return {
     open(template) {
-      const overlay = template.type === "page" ? page : template.type === "form" ? form : side;
+      const overlay =
+        template.type === "page" ? page : template.type === "form" ? form : template.type === "about" ? about : side;
       if (template.type === "side") {
         sideTitle.textContent = template.title ?? "";
         sideBody.textContent = template.body ?? "";
       } else if (template.type === "page") {
-        pageTitle.textContent = template.title ?? "";
-        pageBody.textContent = template.body ?? "";
+        projectsPage.reset();
       }
       open = true;
       activeOverlay = overlay;
