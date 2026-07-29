@@ -93,6 +93,14 @@ Bouton fixe (coin haut-gauche, juste à droite de `.sound-toggle`, même style v
 - **Affiche la langue active** (ex. "FR" tant que le site est en français), pas la langue cible — au clic, `setLanguage()` bascule l'état et notifie tous les abonnés `onLanguageChange()` (`heroText.ts`, `contactForm.ts`, `linkOverlay.ts` pour l'instant) : chacun retraduit ses propres nœuds texte en place, pas de reconstruction/re-render global. Affichait d'abord la langue cible ("EN" en étant en français, libellé pensé comme actionnable) — **inversé sur retour explicite** ("ça affiche la langue actuelle") ; `aria-label` continue de décrire l'action (langue obtenue au clic), seul le texte visible du bouton a changé.
 - **Un seul point de vérité pour la langue active** (`i18n/translate.ts`) : n'importe quel futur module peut s'abonner à `onLanguageChange()` sans passer par `main.ts` — cohérent avec le principe "aucun module ne connaît l'état global de l'app" pour tout ce qui est vraiment local à sa propre fonctionnalité (ici, purement une question de langue d'affichage, pas d'état applicatif comme `activeId`/`isAnimating`).
 
+## `cursorTooltip.ts`
+
+Petite bulle qui suit le curseur (`pointermove`, `left`/`top` réécrits directement en JS — décalage de 16/20px pour ne jamais masquer le point exact visé). `createCursorTooltip()` retourne `{ show(objectName), hide() }`, piloté entièrement par `main.ts` (`setHovered()`) : ce module ne connaît ni le raycaster ni la notion de survol, juste la position du curseur — même principe d'ignorance mutuelle que les autres modules de `interactions/` vis-à-vis de `main.ts`.
+
+- **Scopée aux objets `animation=true`** (`main.ts` vérifie `object.userData.animation === true` avant d'appeler `show()`) — pas systématique sur tout objet interactif (un futur objet `link` seul, sans `animation=true`, n'aurait pas de bulle).
+- **Texte traduit** via `translate(\`cursor.${objectName}\`)`, ré-appelé à chaque `onLanguageChange()` tant qu'une bulle est affichée (sinon elle resterait figée dans l'ancienne langue si on la bascule pendant un survol prolongé). Clés `cursor.<object.name>` — texte final fourni directement par l'utilisateur pour les neuf objets interactifs actuels (voir CLAUDE.md racine pour la liste), ton parfois volontairement léger/humoristique (ex. `cursor.Chair` = "IKEA ALEFJÄLL").
+- **`pointer-events: none`** (`style.css`) — ne doit jamais intercepter un survol/clic destiné au canvas en dessous. `aria-hidden="true"` : purement décorative, l'accessible nav (`accessibleNav.ts`) a déjà ses propres libellés (bruts, `entry.id`) pour le clavier/lecteur d'écran, pas besoin de dupliquer.
+
 ## Convention générale pour tout nouvel élément DOM ajouté ici
 
 - Jamais de framework — DOM API directe (`document.createElement`, `innerHTML` pour du contenu statique).

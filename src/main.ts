@@ -20,6 +20,7 @@ import { createFooter } from "./ui/footer";
 import { createLinkOverlay } from "./ui/linkOverlay";
 import { createSiteMenu } from "./ui/siteMenu";
 import { createLanguageToggle } from "./ui/languageToggle";
+import { createCursorTooltip } from "./ui/cursorTooltip";
 import { computeAutoFocus } from "./objects/autoFocus";
 import { findClipForObject, configureKtx2Support } from "./objects/loader";
 import { installScaffoldBridge } from "./objects/scaffoldBridge";
@@ -73,6 +74,7 @@ function startApp(): void {
   // depuis le handler Échap plus bas).
   const { playSoundIfAny, stopSoundIfAny, soundToggle } = createSoundController(camera);
   createLanguageToggle();
+  const cursorTooltip = createCursorTooltip();
 
   const defaultCameraPosition = new Vector3(...sceneConfig.defaultCamera.position);
   const defaultCameraTarget = new Vector3(...sceneConfig.defaultCamera.target);
@@ -133,6 +135,13 @@ function startApp(): void {
     hoveredObject = object;
     canvas.style.cursor = object ? "pointer" : "default";
     objectAnimations.setHovered(object);
+    // Bulle de texte qui suit le curseur, scopée aux objets "animation=true" (voir
+    // ui/cursorTooltip.ts) — clé i18n "cursor.<object.name>", ex. "cursor.Mac".
+    if (object?.userData.animation === true) {
+      cursorTooltip.show(object.name);
+    } else {
+      cursorTooltip.hide();
+    }
     // Couplage survol pour "animationClip" quand animationTrigger="hover" — symétrique à "screen"
     // (toujours actif tant que survolé, pas de timeline fixe). Ignoré si animationTrigger="click"
     // (voir selectEntry()/closeActive() pour ce cas).

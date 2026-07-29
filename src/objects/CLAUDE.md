@@ -5,7 +5,7 @@ Construction du contenu 3D. `objects/scenes/office.ts` exporte `buildOfficeScene
 ## Pipeline d'import `.glb`
 
 1. Modéliser dans Blender, exporter en `.glb` (glTF Binary, "+Y Up" coché, **"Custom Properties" coché** — voir plus bas) vers `public/models/<nom>.glb`.
-2. Charger avec `loadModel(path)` (`loader.ts`) — ça active `castShadow`/`receiveShadow` sur tous les meshes (GLTFLoader ne le fait pas par défaut).
+2. Charger avec `loadModel(path)` (`loader.ts`) — ça active `castShadow`/`receiveShadow` sur tous les meshes (GLTFLoader ne le fait pas par défaut), et génère un UV planaire de repli (`ensurePlanarUv()`) pour tout mesh dont le matériau référence une texture (`map`/`normalMap`/`roughnessMap`/`metalnessMap`/`emissiveMap`/`aoMap`/`bumpMap`/`alphaMap`) mais n'a aucun UV exporté depuis Blender — trouvé sur `Mac_structure` via le validateur glTF officiel (`texCoord: -1` sur son matériau, hors spec mais sans incidence — `GLTFLoader` l'ignore si `<= 0` ; le vrai problème sous-jacent était l'absence totale d'UV, pas ce champ). Avertit en console si ça arrive, pour rester visible plutôt que de silencieusement produire un rendu incorrect. Réutilisée par `interactions/animations/screenGlow.ts` pour son propre cas (`emissiveMap` de bruit assignée dynamiquement APRÈS le chargement, voir CLAUDE.md racine "Page unique"/"Bruit neige TV").
 3. **Toujours vérifier l'orientation et la position après un premier import** — voir la checklist ci-dessous.
 4. `buildOfficeScene()` est `async` (chargement réseau) — `main.ts` gère déjà l'`await` dans `init()`.
 

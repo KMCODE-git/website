@@ -40,12 +40,54 @@ export interface LoadedModel {
   animations: THREE.AnimationClip[];
 }
 
+// Génère un UV planaire simple (projection des sommets sur les deux axes de plus grande étendue
+// de la bounding box locale — un mesh plat n'a presque aucune épaisseur sur le troisième) pour un
+// mesh qui n'en a aucun. Renvoie `true` si un UV a réellement été généré (rien à faire, donc
+// `false`, si le mesh en avait déjà un) — permet à chaque appelant de décider s'il doit avertir en
+// console. Cas d'usage : au chargement (voir loadModel() ci-dessous, tout mesh dont le matériau
+// EXPORTÉ référence déjà une texture mais sans UV — trouvé via le validateur glTF officiel sur
+// `Mac_structure`/matériau "soil_A", `texCoord: -1` hors spec, sans incidence sur le rendu en soi
+// puisque GLTFLoader ignore ce champ si `<= 0`, mais révélateur de l'absence totale d'UV
+// sous-jacente) ; et dans `interactions/animations/screenGlow.ts`, pour un mesh dont l'`emissiveMap`
+// (bruit "neige TV") est assignée dynamiquement APRÈS le chargement — un cas que ce contrôle
+// générique, exécuté une seule fois ici, ne peut pas anticiper (ex. `Mac_screen`, dont le matériau
+// exporté n'a lui-même aucune texture).
+export function ensurePlanarUv(mesh: THREE.Mesh): boolean {
+  const geometry = mesh.geometry;
+  if (geometry.attributes.uv) return false;
+  geometry.computeBoundingBox();
+  const box = geometry.boundingBox!;
+  const min = [box.min.x, box.min.y, box.min.z];
+  const size = [box.max.x - min[0], box.max.y - min[1], box.max.z - min[2]];
+  const [uAxis, vAxis] = [0, 1, 2].sort((a, b) => size[b] - size[a]);
+  const position = geometry.attributes.position;
+  const uv = new Float32Array(position.count * 2);
+  for (let i = 0; i < position.count; i++) {
+    uv[i * 2] = size[uAxis] > 0 ? (position.getComponent(i, uAxis) - min[uAxis]) / size[uAxis] : 0;
+    uv[i * 2 + 1] = size[vAxis] > 0 ? (position.getComponent(i, vAxis) - min[vAxis]) / size[vAxis] : 0;
+  }
+  geometry.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+  return true;
+}
+
+// Propriétés de THREE.MeshStandardMaterial qui ont besoin d'un UV pour être échantillonnées —
+// envMap (reflet d'environnement) exclu volontairement, il n'en a jamais besoin.
+const UV_DEPENDENT_MAP_KEYS = ["map", "normalMap", "roughnessMap", "metalnessMap", "emissiveMap", "aoMap", "bumpMap", "alphaMap"] as const;
+
+function materialNeedsUv(material: THREE.Material): boolean {
+  return UV_DEPENDENT_MAP_KEYS.some((key) => key in material && (material as unknown as Record<string, unknown>)[key]);
+}
+
 export async function loadModel(path: string): Promise<LoadedModel> {
   const gltf = await loader.loadAsync(path);
   gltf.scene.traverse((child) => {
     if (child instanceof THREE.Mesh) {
       child.castShadow = true;
       child.receiveShadow = true;
+      const materials = Array.isArray(child.material) ? child.material : [child.material];
+      if (materials.some(materialNeedsUv) && ensurePlanarUv(child)) {
+        console.warn(`"${child.name}" a un matériau texturé mais aucun UV exporté depuis Blender — UV planaire généré automatiquement en repli (voir ensurePlanarUv(), objects/loader.ts).`);
+      }
     }
   });
   return { scene: gltf.scene, animations: gltf.animations };

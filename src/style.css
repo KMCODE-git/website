@@ -119,6 +119,36 @@ body.dark-mode .hero-text__subtitle {
   font-family: "Quicksand", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
+/* Bulle qui suit le curseur au survol d'un objet "animation=true" (ui/cursorTooltip.ts) — position
+   pilotée en JS (left/top réécrits à chaque pointermove), ce fichier ne gère que l'apparence.
+   pointer-events: none : ne doit jamais intercepter le survol/clic de la scène 3D en dessous. */
+.cursor-tooltip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 15;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(20, 21, 26, 0.85);
+  color: #f2f3f5;
+  font-family: "Quicksand", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.cursor-tooltip--visible {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cursor-tooltip {
+    transition: none;
+  }
+}
+
 .loading {
   position: fixed;
   inset: 0;

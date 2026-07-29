@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { ensurePlanarUv } from "../../objects/loader";
 
 // Vitesse de fondu du "screen" — même logique que le survol-lift (objectAnimations.ts) : couplé
 // directement au survol (pas une timeline fixe), pour s'éteindre aussi vite que le survol se
@@ -25,6 +26,16 @@ const NOISE_SIZE = 64;
 // plus haut = tuile répétée plus souvent = grain plus fin ; plus bas = grain plus grossier.
 const SCREEN_NOISE_REPEAT = 32;
 
+// `regenerateNoise()` fait deux choses coûteuses : une boucle JS sur tous les texels (négligeable
+// seul) ET un `texture.needsUpdate = true`, qui force un ré-upload GPU complet de la texture
+// (`gl.texSubImage2D`) — À CHAQUE FRAME tant qu'un écran est survolé, ce dernier point a un coût
+// réel (mesuré comme contributeur direct aux saccades signalées : "parfois les animations aussi"
+// sont lentes, précisément pendant le survol d'un écran). Un vrai bruit aléatoire reste tout aussi
+// convaincant en "neige TV" rafraîchi à ~20 im/s qu'à 60 — l'oeil ne distingue pas la différence
+// sur du bruit pur — donc régénérer/ré-uploader une frame sur N plutôt qu'à chaque frame réduit ce
+// coût d'autant, sans changement visuel perceptible.
+const REGENERATE_EVERY_N_FRAMES = 3;
+
 interface ScreenGlowState {
   material: THREE.MeshStandardMaterial;
   baseEmissiveIntensity: number;
@@ -40,6 +51,9 @@ interface ScreenGlowState {
   // couleur qu'il remplace) — une seule image de bruit générée une fois à l'activation, jamais
   // régénérée ensuite, plutôt que désactiver l'effet entièrement.
   noiseGenerated: boolean;
+  // Compte les frames écoulées depuis la dernière régénération (voir REGENERATE_EVERY_N_FRAMES) —
+  // remis à 0 à chaque régénération et à chaque extinction complète.
+  framesSinceRegenerate: number;
 }
 
 export interface ScreenGlowSystem {
@@ -63,32 +77,6 @@ function regenerateNoise(state: ScreenGlowState): void {
   }
   state.noiseCtx.putImageData(state.noiseImageData, 0, 0);
   state.noiseTexture.needsUpdate = true;
-}
-
-// Génère un UV planaire simple si le mesh n'en a aucun — cas de `Mac_screen` (confirmé en parsant
-// directement le .glb : attributs `[POSITION, NORMAL]`, aucun `TEXCOORD_0`), dont le matériau
-// d'origine n'avait qu'une couleur plate (jamais eu besoin d'UV) jusqu'à ce qu'on lui assigne une
-// `emissiveMap` — sans UV, le shader échantillonne la texture avec des coordonnées indéfinies,
-// donnant le rendu "glitché" signalé par l'utilisateur (indépendant de la taille du grain réglée
-// via SCREEN_NOISE_REPEAT, d'où l'absence d'effet en la modifiant). Projette les sommets sur les
-// deux axes de plus grande étendue de la bounding box locale (un écran plat n'a presque aucune
-// épaisseur sur le troisième) plutôt que de dépendre d'un ré-export Blender.
-function ensurePlanarUv(mesh: THREE.Mesh): void {
-  const geometry = mesh.geometry;
-  if (geometry.attributes.uv) return;
-  geometry.computeBoundingBox();
-  const box = geometry.boundingBox!;
-  const min = [box.min.x, box.min.y, box.min.z];
-  const size = [box.max.x - min[0], box.max.y - min[1], box.max.z - min[2]];
-  const [uAxis, vAxis] = [0, 1, 2].sort((a, b) => size[b] - size[a]);
-  const position = geometry.attributes.position;
-  const uv = new Float32Array(position.count * 2);
-  for (let i = 0; i < position.count; i++) {
-    uv[i * 2] = size[uAxis] > 0 ? (position.getComponent(i, uAxis) - min[uAxis]) / size[uAxis] : 0;
-    uv[i * 2 + 1] = size[vAxis] > 0 ? (position.getComponent(i, vAxis) - min[vAxis]) / size[vAxis] : 0;
-  }
-  geometry.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
-  console.warn(`"${mesh.name}" a animationType="screen" mais aucun UV exporté depuis Blender — UV planaire généré automatiquement en repli (voir ensurePlanarUv(), screenGlow.ts).`);
 }
 
 // "screen" (Custom Property posée sur un sous-objet de l'objet interactif, ex. Mac_screen) fait
@@ -128,7 +116,14 @@ export function createScreenGlowSystem(reducedMotion: boolean): ScreenGlowSystem
     // clone, animer l'émissif de l'un allumerait aussi tous ceux qui partagent la ressource.
     const material = mesh.material.clone();
     mesh.material = material;
-    ensurePlanarUv(mesh);
+    // Cas de `Mac_screen` (confirmé en parsant directement le .glb : attributs `[POSITION,
+    // NORMAL]`, aucun `TEXCOORD_0`), dont le matériau d'origine n'avait qu'une couleur plate
+    // (jamais eu besoin d'UV) jusqu'à ce qu'on lui assigne l'`emissiveMap` de bruit ci-dessous —
+    // un cas que le contrôle générique au chargement (objects/loader.ts, ensurePlanarUv()) ne
+    // peut pas anticiper puisque ce matériau n'a aucune texture avant ce point.
+    if (ensurePlanarUv(mesh)) {
+      console.warn(`"${mesh.name}" a animationType="screen" mais aucun UV exporté depuis Blender — UV planaire généré automatiquement en repli (voir ensurePlanarUv(), objects/loader.ts).`);
+    }
 
     const noiseCanvas = document.createElement("canvas");
     noiseCanvas.width = NOISE_SIZE;
@@ -158,6 +153,7 @@ export function createScreenGlowSystem(reducedMotion: boolean): ScreenGlowSystem
       noiseImageData,
       noiseTexture,
       noiseGenerated: false,
+      framesSinceRegenerate: 0,
     };
     screenGlows.set(mesh, state);
     return state;
@@ -183,13 +179,20 @@ export function createScreenGlowSystem(reducedMotion: boolean): ScreenGlowSystem
           // Complètement éteint : pas la peine de régénérer du bruit invisible (emissiveIntensity
           // retombé à sa valeur de base). Prêt à re-scintiller au prochain survol.
           state.noiseGenerated = false;
+          state.framesSinceRegenerate = 0;
         } else if (reducedMotion) {
           if (!state.noiseGenerated) {
             regenerateNoise(state);
             state.noiseGenerated = true;
           }
         } else {
-          regenerateNoise(state);
+          // Throttlé à une frame sur REGENERATE_EVERY_N_FRAMES (voir la constante) — le ré-upload
+          // GPU (texture.needsUpdate) est le coût réel ici, pas la génération JS elle-même.
+          state.framesSinceRegenerate++;
+          if (state.framesSinceRegenerate >= REGENERATE_EVERY_N_FRAMES) {
+            state.framesSinceRegenerate = 0;
+            regenerateNoise(state);
+          }
         }
       }
     },
