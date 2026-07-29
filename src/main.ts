@@ -105,20 +105,21 @@ function startApp(): void {
     if (clip) objectAnimations.setClipActive(object, clip, active);
   }
 
-  // "sound" (Custom Property Blender, String, ex. "grass") — lecture pilotée par ce que rapporte
-  // objectAnimations.trigger() (voir TriggerOutcome) via playSoundIfAny/stopSoundIfAny
-  // (audio/soundController.ts) : ne joue que si un cycle a réellement démarré cette fois (pas à
-  // chaque clic/survol si l'animation était déjà en cours et donc bloquée — corrigé après un bug
-  // où enchaîner des clics rejouait le son à chaque fois alors que l'animation, elle, ne se
-  // relançait pas).
-  //
-  // `loop` : un son couplé à une animation "loop" ou à un zoom doit lui-même boucler — sinon un
-  // one-shot plus court que l'animation finit de jouer bien avant que l'utilisateur ne quitte
-  // cet état, laissant l'animation continuer en silence (confusion vécue : ça ressemble à un
-  // bug, l'utilisateur reclique en espérant relancer le son, ce qui arrête en fait toute la
-  // boucle). L'arrêt réel (boucle ou zoom) ne se fait plus au moment du déclenchement mais via
-  // objectAnimations.onOneShotEnd() (voir plus bas) ou closeActive() pour le zoom — un seul
-  // endroit par type d'état, jamais dupliqué.
+  // "sound" (Custom Property Blender, String, ex. "grass") — résumé des trois cas (`playSoundIfAny`/
+  // `stopSoundIfAny`, audio/soundController.ts) selon `animationTrigger` :
+  // - `"click"` (sans `loop`) : one-shot, joué dans selectEntry() seulement si
+  //   objectAnimations.trigger() renvoie "started" (pas à chaque clic enchaîné pendant qu'un cycle
+  //   tourne déjà et reste donc bloqué — bug corrigé, voir TriggerOutcome).
+  // - `"click"` + `loop=true` : boucle jusqu'au prochain déclenchement (qui demande l'arrêt
+  //   "propre" du cycle visuel en cours, voir OneShot.stopRequested) — coupé via
+  //   objectAnimations.onOneShotEnd() exactement quand ce cycle se termine pour de bon, jamais au
+  //   moment même du clic qui a demandé l'arrêt.
+  // - `"hover"` : boucle tant que l'objet est survolé, coupé net dès la fin du survol — couplé
+  //   DIRECTEMENT à l'état de survol dans setHovered() (comme "screen"/animationClip), pas au
+  //   TriggerOutcome ni à `loop` (qui ne concerne que le cycle de l'animation visuelle). Nécessaire
+  //   pour couvrir un objet hover sans animationType reconnu (ex. Mac/iPhone, dont "screen" vit sur
+  //   un sous-objet — passer par trigger() ne les couvrait pas).
+  // Le zoom fait exception (voir selectEntry()) : son son est toujours one-shot, jamais en boucle.
 
   // Coupe le son d'un objet exactement au moment où son cycle one-shot se termine POUR DE BON
   // (pas une simple relance de boucle) — couvre à la fois un one-shot classique qui durerait plus
@@ -137,13 +138,19 @@ function startApp(): void {
     // (voir selectEntry()/closeActive() pour ce cas).
     if (previouslyHovered?.userData.animationTrigger === "hover") setClipActiveIfAny(previouslyHovered, false);
     if (object?.userData.animationTrigger === "hover") setClipActiveIfAny(object, true);
+    // "sound" pour animationTrigger="hover" : couplé DIRECTEMENT à l'état de survol (comme
+    // animationClip/"screen" ci-dessus), pas au TriggerOutcome de l'animation visuelle ci-dessous —
+    // boucle tant que l'objet est survolé, s'arrête net dès la fin du survol, indépendamment de la
+    // Custom Property `loop` (qui ne régit que le cycle de l'animation VISUELLE en boucle, voir
+    // selectEntry() pour le cas "click"). Nécessaire pour un objet hover sans animationType reconnu
+    // (ex. Mac/iPhone : l'effet "screen" vit sur un sous-objet, pas d'animationType sur le parent) —
+    // passer par trigger()/TriggerOutcome comme avant ne les couvrait pas.
+    if (previouslyHovered?.userData.animationTrigger === "hover") stopSoundIfAny(previouslyHovered);
+    if (object?.userData.animationTrigger === "hover") playSoundIfAny(object, true);
     // "zoom" reste déclenché uniquement au clic quel que soit animationTrigger (voir CLAUDE.md
     // racine, "Interaction et caméra") — le survol-lift ci-dessus reste actif dans tous les cas.
     if (object && object.userData.animationTrigger === "hover" && object.userData.animationType !== "zoom") {
-      // "sound" ne démarre que si un cycle démarre réellement à l'entrée du survol (voir
-      // TriggerOutcome) — l'arrêt (boucle ou capage) est géré ailleurs, voir onOneShotEnd().
-      const outcome = objectAnimations.trigger(object, object.userData.animationType as string | undefined);
-      if (outcome === "started") playSoundIfAny(object, object.userData.loop === true);
+      objectAnimations.trigger(object, object.userData.animationType as string | undefined);
     }
   }
 

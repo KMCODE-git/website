@@ -3,12 +3,12 @@ import * as THREE from "three";
 // Vitesse de fondu du "screen" — même logique que le survol-lift (objectAnimations.ts) : couplé
 // directement au survol (pas une timeline fixe), pour s'éteindre aussi vite que le survol se
 // termine.
-const SCREEN_GLOW_SPEED = 0.25;
+const SCREEN_GLOW_SPEED = 0.1;
 // Calibré par capture d'écran (voir git log) : un bleu quasi-blanc (proche de la couleur de base
 // du bloom) blowout en blanc plein dès une intensité ~2 à cause du seuil de bloom
 // (postprocessing.ts, 0.95) — un bleu plus saturé reste lisible comme "écran allumé" sans tout
 // cramer, même à une intensité plus confortablement au-dessus du seuil.
-const SCREEN_EMISSIVE_INTENSITY = 2.5;
+const SCREEN_EMISSIVE_INTENSITY = 4;
 const SCREEN_COLOR = new THREE.Color(0x3a6ea5);
 
 // Bruit "neige TV" plutôt qu'un fondu de couleur uni — demande explicite ("effet de bruit/neige
@@ -16,7 +16,14 @@ const SCREEN_COLOR = new THREE.Color(0x3a6ea5);
 // `fillRect` — bien plus rapide) : la texture est volontairement grossière/pixelisée
 // (`THREE.NearestFilter`, voir plus bas), un vrai grain fin serait de toute façon lissé par le
 // mapping UV avant d'être perceptible à la taille d'un écran de bureau/iPhone.
-const NOISE_SIZE = 48;
+const NOISE_SIZE = 64;
+
+// Nombre de répétitions de la tuile de bruit sur CHAQUE écran (même valeur pour tous, pas un calcul
+// automatique par taille — un premier essai basé sur la bounding box de chaque écran, plus élevé
+// sur Mac_screen (~3× plus grand qu'iPhone_screen) pour compenser, ne donnait toujours pas un bon
+// rendu sur Mac_screen malgré un repeat pourtant recalculé en conséquence). À régler à la main ici :
+// plus haut = tuile répétée plus souvent = grain plus fin ; plus bas = grain plus grossier.
+const SCREEN_NOISE_REPEAT = 32;
 
 interface ScreenGlowState {
   material: THREE.MeshStandardMaterial;
@@ -58,6 +65,32 @@ function regenerateNoise(state: ScreenGlowState): void {
   state.noiseTexture.needsUpdate = true;
 }
 
+// Génère un UV planaire simple si le mesh n'en a aucun — cas de `Mac_screen` (confirmé en parsant
+// directement le .glb : attributs `[POSITION, NORMAL]`, aucun `TEXCOORD_0`), dont le matériau
+// d'origine n'avait qu'une couleur plate (jamais eu besoin d'UV) jusqu'à ce qu'on lui assigne une
+// `emissiveMap` — sans UV, le shader échantillonne la texture avec des coordonnées indéfinies,
+// donnant le rendu "glitché" signalé par l'utilisateur (indépendant de la taille du grain réglée
+// via SCREEN_NOISE_REPEAT, d'où l'absence d'effet en la modifiant). Projette les sommets sur les
+// deux axes de plus grande étendue de la bounding box locale (un écran plat n'a presque aucune
+// épaisseur sur le troisième) plutôt que de dépendre d'un ré-export Blender.
+function ensurePlanarUv(mesh: THREE.Mesh): void {
+  const geometry = mesh.geometry;
+  if (geometry.attributes.uv) return;
+  geometry.computeBoundingBox();
+  const box = geometry.boundingBox!;
+  const min = [box.min.x, box.min.y, box.min.z];
+  const size = [box.max.x - min[0], box.max.y - min[1], box.max.z - min[2]];
+  const [uAxis, vAxis] = [0, 1, 2].sort((a, b) => size[b] - size[a]);
+  const position = geometry.attributes.position;
+  const uv = new Float32Array(position.count * 2);
+  for (let i = 0; i < position.count; i++) {
+    uv[i * 2] = size[uAxis] > 0 ? (position.getComponent(i, uAxis) - min[uAxis]) / size[uAxis] : 0;
+    uv[i * 2 + 1] = size[vAxis] > 0 ? (position.getComponent(i, vAxis) - min[vAxis]) / size[vAxis] : 0;
+  }
+  geometry.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+  console.warn(`"${mesh.name}" a animationType="screen" mais aucun UV exporté depuis Blender — UV planaire généré automatiquement en repli (voir ensurePlanarUv(), screenGlow.ts).`);
+}
+
 // "screen" (Custom Property posée sur un sous-objet de l'objet interactif, ex. Mac_screen) fait
 // s'allumer un écran tant que le parent est survolé — voir CLAUDE.md racine et objects/CLAUDE.md.
 // Écrit sur material.emissive*/emissiveMap, jamais sur position/rotation/scale : totalement
@@ -95,6 +128,7 @@ export function createScreenGlowSystem(reducedMotion: boolean): ScreenGlowSystem
     // clone, animer l'émissif de l'un allumerait aussi tous ceux qui partagent la ressource.
     const material = mesh.material.clone();
     mesh.material = material;
+    ensurePlanarUv(mesh);
 
     const noiseCanvas = document.createElement("canvas");
     noiseCanvas.width = NOISE_SIZE;
@@ -107,6 +141,10 @@ export function createScreenGlowSystem(reducedMotion: boolean): ScreenGlowSystem
     // au contraire des blocs de grain bien distincts, comme une vraie neige TV pixelisée.
     noiseTexture.magFilter = THREE.NearestFilter;
     noiseTexture.minFilter = THREE.NearestFilter;
+    // Voir SCREEN_NOISE_REPEAT en tête de fichier pour régler la taille du grain.
+    noiseTexture.wrapS = THREE.RepeatWrapping;
+    noiseTexture.wrapT = THREE.RepeatWrapping;
+    noiseTexture.repeat.set(SCREEN_NOISE_REPEAT, SCREEN_NOISE_REPEAT);
     material.emissiveMap = noiseTexture;
 
     state = {

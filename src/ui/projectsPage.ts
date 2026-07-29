@@ -33,9 +33,9 @@ function translateYPercent(index: number): number {
 // la mise en page de la maquette fournie (helpers/, image plein cadre) tout en laissant deviner la
 // vignette précédente/suivante (demande explicite : "carrousel vertical où on voit l'image avant
 // et après"). Titre = texte final fourni directement par l'utilisateur, jamais passé à
-// translate() ; le poste (`roleKey`), lui, EST traduit (`translate()`, demande explicite ultérieure
-// "profite en pour traduire les postes") ; la description reste une clé i18n non résolue
-// (data/projects.ts), affichée telle quelle pour une raison différente (laius pas encore écrit).
+// translate(). Poste (`roleKey`) et description (`descriptionKey`) passent tous les deux par
+// translate() — la description reste un texte de remplacement (Lorem ipsum, identique en fr/en)
+// en attendant le vrai laius de chaque projet, pas une clé volontairement non résolue.
 export function createProjectsPage(): ProjectsPage {
   let index = 0;
 
@@ -157,7 +157,7 @@ export function createProjectsPage(): ProjectsPage {
     const project = projects[index];
     title.textContent = project.title;
     roleValue.textContent = translate(project.roleKey);
-    descriptionValue.textContent = project.descriptionKey;
+    descriptionValue.textContent = translate(project.descriptionKey);
     counter.textContent = `${index + 1} / ${projects.length}`;
     if (project.url) {
       visitLink.href = project.url;

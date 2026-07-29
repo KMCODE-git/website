@@ -1,6 +1,7 @@
 // Associe une valeur de Custom Property Blender "sound" (String, ex. "grass_rustling") à un
-// fichier audio dans public/sounds/ — un son one-shot par clé, jamais en boucle (voir CLAUDE.md
-// racine, "Son sur les animations", et audio/soundEffects.ts).
+// fichier audio dans public/sounds/ — one-shot ou en boucle selon animationTrigger/`loop`, pas une
+// propriété du fichier lui-même (voir CLAUDE.md racine, "Son sur les animations", et
+// audio/soundEffects.ts).
 //
 // `satisfies` plutôt qu'une annotation `: Record<string, string>` : garde les clés/valeurs en
 // types littéraux inférés (ex. `keyof typeof soundFiles` donne l'union exacte des ids valides,
@@ -14,6 +15,7 @@ export const soundFiles = {
   ambiance_sound: "/sounds/ambiance_sound.mp3",
   ps5: "/sounds/ps5.mp3",
   coffee: "/sounds/coffee.mp3",
+  electric_noise: "/sounds/electric_noise.mp3",
 } satisfies Record<string, string>;
 
 // Sons "exclusifs" : quand l'un d'eux démarre, tous les autres sons en cours (peu importe

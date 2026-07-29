@@ -1,13 +1,13 @@
 export interface ProjectEntry {
   id: string;
   title: string;
-  // Clé i18n RÉSOLUE (contrairement à descriptionKey ci-dessous) — le poste est traduit dans
-  // fr.json/en.json, demande explicite ("profite en pour traduire les postes").
+  // Clé i18n résolue — le poste est traduit dans fr.json/en.json, demande explicite ("profite en
+  // pour traduire les postes").
   roleKey: string;
   image: string;
-  // Clé i18n volontairement non résolue (façon i18next, même convention que l'ancien gabarit
-  // générique title/body — voir CLAUDE.md racine) : affichée telle quelle par ui/projectsPage.ts
-  // (jamais passée à translate()), pas de vrai laius décidé pour l'instant.
+  // Clé i18n résolue (traduite via translate() dans ui/projectsPage.ts), mais avec un texte encore
+  // en placeholder (Lorem ipsum, identique en fr/en) le temps du vrai laius de chaque projet — plus
+  // une clé volontairement laissée NON résolue comme au tout début de cette page.
   descriptionKey: string;
   // Absent pour KMCODE/Element table/5 Dice Quest (pas de site public à lier) — ui/projectsPage.ts
   // n'affiche le lien "voir le site" que si ce champ est renseigné.
