@@ -21,10 +21,11 @@ import { createLinkOverlay } from "./ui/linkOverlay";
 import { createSiteMenu } from "./ui/siteMenu";
 import { createLanguageToggle } from "./ui/languageToggle";
 import { createCursorTooltip } from "./ui/cursorTooltip";
+import { createOrientationNotice } from "./ui/orientationNotice";
 import { computeAutoFocus } from "./objects/autoFocus";
 import { findClipForObject, configureKtx2Support } from "./objects/loader";
 import { installScaffoldBridge } from "./objects/scaffoldBridge";
-import { sceneConfig, type FocusEntry } from "./data/scenes";
+import { sceneConfig, computeResponsiveDefaultCamera, type FocusEntry } from "./data/scenes";
 import { linkTemplates } from "./data/links";
 
 // Fraction de remplissage bien plus élevée que le zoom standard (0.75, voir autoFocus.ts) pour
@@ -75,9 +76,16 @@ function startApp(): void {
   const { playSoundIfAny, stopSoundIfAny, soundToggle } = createSoundController(camera);
   createLanguageToggle();
   const cursorTooltip = createCursorTooltip();
+  createOrientationNotice();
 
-  const defaultCameraPosition = new Vector3(...sceneConfig.defaultCamera.position);
-  const defaultCameraTarget = new Vector3(...sceneConfig.defaultCamera.target);
+  // Pose de repos "effective" — identique à sceneConfig.defaultCamera en paysage, recadrée un peu
+  // plus haut (target.y) en portrait pour laisser de la place au titre/sous-titre au-dessus (voir
+  // computeResponsiveDefaultCamera(), data/scenes.ts). Recalculée au resize (voir plus bas), donc
+  // mutée en place (`.copy()`/`.set()`) plutôt que réassignée : les autres modules qui gardent une
+  // référence à ces mêmes instances (parallaxRig, cameraRig) voient toujours la valeur à jour.
+  const initialDefaultCamera = computeResponsiveDefaultCamera(window.innerWidth / window.innerHeight);
+  const defaultCameraPosition = new Vector3(...initialDefaultCamera.position);
+  const defaultCameraTarget = new Vector3(...initialDefaultCamera.target);
 
   let activeId: string | null = null;
   let isAnimating = false;
@@ -184,7 +192,10 @@ function startApp(): void {
     // mute/unmute normal du bouton, sans effet s'il l'était déjà.
     document.body.classList.remove("page-overlay-active");
     soundToggle.setCloseMode(false);
-    cameraRig.reset(sceneConfig.defaultCamera, () => {
+    // Valeurs LIVE (defaultCameraPosition/Target, pas sceneConfig.defaultCamera figé) : si
+    // l'orientation a changé pendant qu'on était zoomé (voir le handler resize plus bas), le
+    // dézoom doit revenir sur la pose recadrée courante, pas sur l'ancienne.
+    cameraRig.reset({ position: defaultCameraPosition.toArray(), target: defaultCameraTarget.toArray() }, () => {
       isAnimating = false;
       activeId = null;
       parallaxRig.setEnabled(true);
@@ -434,6 +445,19 @@ function startApp(): void {
     handleCameraResize(camera);
     handleRendererResize(renderer);
     handlePostprocessingResize(composer);
+    // Recalcule la pose de repos "effective" (voir computeResponsiveDefaultCamera(),
+    // data/scenes.ts) — une rotation d'appareil (portrait <-> paysage) doit re-cadrer la scène en
+    // conséquence, pas seulement au premier chargement. Toujours mise à jour (pour que
+    // closeActive() reparte de la bonne valeur même si la rotation a eu lieu pendant un zoom),
+    // mais ne repositionne la caméra tout de suite que si on n'est pas au milieu d'un zoom/tween —
+    // sinon ça couperait le tween en cours ou ferait sauter la caméra loin de l'objet zoomé.
+    const responsive = computeResponsiveDefaultCamera(camera.aspect);
+    defaultCameraPosition.set(...responsive.position);
+    defaultCameraTarget.set(...responsive.target);
+    if (activeId === null && !isAnimating) {
+      parallaxRig.setBase(defaultCameraPosition, defaultCameraTarget);
+      cameraRig.setCurrentTarget(defaultCameraTarget);
+    }
   });
 
   function animate() {

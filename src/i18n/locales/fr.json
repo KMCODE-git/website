@@ -42,5 +42,7 @@
   "projects.visit": "Voir le site",
   "projects.nav.prev": "Projet précédent",
   "projects.nav.next": "Projet suivant",
-  "footer.copyright": "Tous droits réservés."
+  "footer.copyright": "Tous droits réservés.",
+  "orientation.notice": "Passez en mode paysage pour profiter pleinement de l'expérience",
+  "orientation.close": "Fermer"
 }

@@ -54,3 +54,20 @@ export const sceneConfig: SceneConfig = {
     // main (par capture d'écran).
   },
 };
+
+// Décale le point visé vers le haut en portrait (aspect < 1) — la caméra vise alors un peu plus
+// haut que le bureau (position inchangée, seule l'orientation du lookAt() bouge), qui apparaît
+// donc plus bas dans le cadre : laisse de la place au-dessus pour le titre/sous-titre
+// (ui/heroText.ts) sans empiéter dessus (demande explicite — "descend un peu... la vue du
+// modèle"). Calibré à l'oeil comme le reste de ce fichier, pas définitif.
+const PORTRAIT_TARGET_Y_OFFSET = 0.35;
+
+export function computeResponsiveDefaultCamera(aspect: number): CameraFocus {
+  if (aspect >= 1) return sceneConfig.defaultCamera;
+  const [px, py, pz] = sceneConfig.defaultCamera.position;
+  const [tx, ty, tz] = sceneConfig.defaultCamera.target;
+  return {
+    position: [px, py, pz],
+    target: [tx, ty + PORTRAIT_TARGET_Y_OFFSET, tz],
+  };
+}

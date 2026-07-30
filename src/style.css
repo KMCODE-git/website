@@ -30,11 +30,13 @@ body {
    l'écran de chargement, révélé en même temps que la scène. */
 .hero-text {
   position: fixed;
-  top: 6vh;
+  top: 4vh;
   left: 50%;
   transform: translateX(-50%);
   z-index: 10;
-  max-width: min(90vw, 42rem);
+  width: min(90vw, 42rem);
+  box-sizing: border-box;
+  padding: 0 1rem;
   text-align: center;
   pointer-events: none;
   color: #2a2620;
@@ -45,17 +47,32 @@ body {
 
 .hero-text__title {
   margin: 0;
-  /* Réduit par rapport à un premier essai (clamp(1.6rem, 4vw, 2.75rem)) jugé trop gros. */
-  font-size: clamp(1.8rem, 4vw, 2.5rem);
+  /* `vmin` (pas `vw`) : indexé à la fois sur la largeur ET la hauteur (vmin = la plus petite des
+     deux) — demande explicite ("indexe sur la largeur et la hauteur"), pertinent maintenant que ce
+     texte ne s'affiche plus qu'en paysage (voir plus bas) : une fenêtre large mais peu haute doit
+     resserrer la police tout autant qu'une fenêtre étroite. */
+  font-size: clamp(1.35rem, 5vmin, 2.5rem);
   font-weight: 500;
   line-height: 1.25;
 }
 
 .hero-text__subtitle {
   margin: 0.6rem 0 0;
-  font-size: clamp(0.8rem, 1.4vw, 0.95rem);
+  font-size: clamp(0.72rem, 3vmin, 0.95rem);
   color: rgba(42, 38, 32, 0.75);
   transition: color 0.4s ease;
+}
+
+/* Portrait : redescendu par rapport au `top: 6vh` du paysage (demande explicite — "descends le un
+   peu"). `clamp()` plutôt qu'une seule valeur `vh` fixe : dynamique/adapté à la hauteur réelle de
+   l'écran (borné en `rem` pour ne jamais coller trop haut sur un petit téléphone ni trop bas sur un
+   grand), tout en restant réglable en un coup d'oeil. RÉGLAGES ICI, à affiner : `2.5rem` (position
+   la plus haute possible, petits écrans), `10vh` (formule qui scale avec la hauteur), `5rem`
+   (position la plus basse possible, grands écrans). */
+@media (orientation: portrait) {
+  .hero-text {
+    top: clamp(4rem, 12vh, 6rem);
+  }
 }
 
 /* Copyright fixe en bas de l'écran, centré (ui/footer.ts) — même logique que .hero-text
@@ -145,6 +162,77 @@ body.dark-mode .hero-text__subtitle {
 
 @media (prefers-reduced-motion: reduce) {
   .cursor-tooltip {
+    transition: none;
+  }
+}
+
+/* Bandeau "passez en paysage" (ui/orientationNotice.ts) — scopé aux appareils tactiles en
+   portrait (voir la media query dans orientationNotice.ts, `pointer: coarse` en plus
+   d'`orientation: portrait` pour ne pas se déclencher sur une simple fenêtre de bureau étroite).
+   z-index sous `.loading` (30, même tier que `.site-menu`/`.sound-toggle`) : reste caché derrière
+   l'écran de chargement comme le reste de l'interface, révélé en même temps que la scène plutôt
+   que de percer par-dessus le loader. `inert` géré en JS (pas seulement `opacity`) quand caché,
+   même convention que le reste du site. */
+.orientation-notice {
+  position: fixed;
+  left: 50%;
+  bottom: 1.25rem;
+  transform: translateX(-50%) translateY(150%);
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: min(88vw, 26rem);
+  box-sizing: border-box;
+  padding: 0.75rem 1rem;
+  border-radius: 14px;
+  background: rgba(20, 21, 26, 0.9);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.orientation-notice--visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
+}
+
+.orientation-notice__text {
+  margin: 0;
+  flex: 1 1 auto;
+  color: #f2f3f5;
+  font-family: "Quicksand", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.orientation-notice__close {
+  flex-shrink: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(242, 243, 245, 0.3);
+  border-radius: 50%;
+  background: transparent;
+  color: #f2f3f5;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.orientation-notice__close:hover,
+.orientation-notice__close:focus-visible {
+  background: rgba(242, 243, 245, 0.12);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orientation-notice {
     transition: none;
   }
 }

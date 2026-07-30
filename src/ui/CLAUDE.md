@@ -101,6 +101,14 @@ Petite bulle qui suit le curseur (`pointermove`, `left`/`top` réécrits directe
 - **Texte traduit** via `translate(\`cursor.${objectName}\`)`, ré-appelé à chaque `onLanguageChange()` tant qu'une bulle est affichée (sinon elle resterait figée dans l'ancienne langue si on la bascule pendant un survol prolongé). Clés `cursor.<object.name>` — texte final fourni directement par l'utilisateur pour les neuf objets interactifs actuels (voir CLAUDE.md racine pour la liste), ton parfois volontairement léger/humoristique (ex. `cursor.Chair` = "IKEA ALEFJÄLL").
 - **`pointer-events: none`** (`style.css`) — ne doit jamais intercepter un survol/clic destiné au canvas en dessous. `aria-hidden="true"` : purement décorative, l'accessible nav (`accessibleNav.ts`) a déjà ses propres libellés (bruts, `entry.id`) pour le clavier/lecteur d'écran, pas besoin de dupliquer.
 
+## `orientationNotice.ts`
+
+Bandeau fixe (bas de l'écran, fermable) invitant à passer en paysage — `createOrientationNotice()` ne prend aucun paramètre ni ne retourne rien, même esprit que `createLanguageToggle()` : il gère directement son propre état (`dismissed`) et sa propre condition d'affichage, rien à faire remonter à `main.ts`.
+
+- **Scopé aux appareils tactiles en portrait** (`window.matchMedia("(orientation: portrait) and (pointer: coarse)")`) — pas juste `orientation: portrait` seul, pour ne pas se déclencher sur une fenêtre de bureau simplement étroite/haute (un utilisateur desktop n'a pas de geste de "rotation" auquel répondre). Écoute `change` sur la media query pour réagir en direct à une rotation d'appareil, pas seulement à l'ouverture de la page.
+- **Fermé pour le reste de la session une fois fermé** (`dismissed`, jamais réinitialisé) — y compris si l'appareil repasse en portrait après un aller-retour par le paysage : sans ça, tourner le téléphone dans un sens puis l'autre ferait réapparaître le bandeau à chaque fois, agaçant plutôt qu'utile.
+- **`inert`** sur le conteneur quand caché (pas seulement `opacity`/classe) — même convention générale que le reste de `ui/`, voir plus bas.
+
 ## Convention générale pour tout nouvel élément DOM ajouté ici
 
 - Jamais de framework — DOM API directe (`document.createElement`, `innerHTML` pour du contenu statique).
