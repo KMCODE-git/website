@@ -22,7 +22,7 @@ export const projects: ProjectEntry[] = [
     id: "kmcode",
     title: "KMCODE",
     roleKey: "projects.kmcode.role",
-    image: "/images/projects/portfolio_2.jpg",
+    image: "/images/projects/kmcode.jpg",
     descriptionKey: "projects.kmcode.description",
   },
   {
@@ -67,7 +67,7 @@ export const projects: ProjectEntry[] = [
     id: "portfolio",
     title: "Portfolio",
     roleKey: "projects.portfolio.role",
-    image: "/images/projects/portfolio_1.jpg",
+    image: "/images/projects/portfolio.jpg",
     descriptionKey: "projects.portfolio.description",
     url: "https://kevinmorize.netlify.app",
   },
